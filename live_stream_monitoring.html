@@ -1,0 +1,2113 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Stream Monitoring | Operations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Sora Font for Linear/Datadog aesthetic -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Sora', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        bg: '#000000',
+                        surface: '#0A0A0A',
+                        surfaceHover: '#141414',
+                        surfaceLight: '#1C1C1C',
+                        border: '#222222',
+                        borderLight: '#333333',
+                        textPrimary: '#EDEDED',
+                        textSecondary: '#888888',
+                        textMuted: '#555555',
+                        accent: '#4F46E5', 
+                        accentHover: '#4338CA',
+                        danger: '#EF4444',
+                        dangerBg: '#2C0F0F',
+                        warning: '#F59E0B',
+                        warningBg: '#332200',
+                        success: '#10B981',
+                        successBg: '#062E1F',
+                        info: '#3B82F6',
+                        infoBg: '#0F2954',
+                        purple: '#8B5CF6',
+                        purpleBg: '#28154F',
+                    },
+                    boxShadow: {
+                        'glow-danger': '0 0 20px rgba(239, 68, 68, 0.15)',
+                        'glow-warning': '0 0 20px rgba(245, 158, 11, 0.1)',
+                        'glow-success': '0 0 20px rgba(16, 185, 129, 0.1)',
+                        'modal': '0 25px 50px -12px rgba(0, 0, 0, 0.75)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body { background-color: #000000; color: #EDEDED; font-family: 'Sora', sans-serif; overflow: hidden; font-size: 13px; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #222222; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #333333; }
+
+        .modal-overlay { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px); }
+        
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes scaleUp { from { transform: scale(0.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .animate-fade-in { animation: fadeIn 0.15s ease-out forwards; }
+        .animate-slide-in { animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-scale-up { animation: scaleUp 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        /* Sidebar Collapsed State */
+        .sidebar-collapsed { width: 64px !important; }
+        .sidebar-collapsed .nav-label { display: none; }
+        .sidebar-collapsed .nav-badge { display: none; }
+        .sidebar-collapsed .sidebar-header-text { display: none; }
+        .sidebar-collapsed .nav-btn { justify-content: center; padding-left: 0; padding-right: 0; }
+        .sidebar-collapsed .nav-group-title { opacity: 0; margin-bottom: 0; height: 0; overflow: hidden; }
+
+        /* Custom Toggle Switch */
+        .toggle-checkbox:checked { right: 0; border-color: #4F46E5; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #4F46E5; }
+        .toggle-checkbox { right: 0; z-index: 1; border-color: transparent; transition: all 0.2s ease; }
+        .toggle-label { background-color: #333333; transition: all 0.2s ease; }
+
+        /* Custom Checkbox/Radio */
+        input[type="radio"]:checked + .wizard-card { border-color: #4F46E5; background-color: rgba(79, 70, 229, 0.08); }
+        input[type="radio"]:checked + .wizard-card .wizard-check { display: flex; }
+        
+        /* Dashboard Layouts */
+        #dashboard-container { width: 100%; transition: all 0.2s ease; }
+        
+        /* Grid View: Square boxes */
+        #dashboard-container.layout-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+        #dashboard-container.layout-grid .stream-card { aspect-ratio: 1/1.1; justify-content: space-between; }
+        #dashboard-container.layout-grid .stream-card .video-wrapper { flex: 1; min-height: 0; border-bottom: 1px solid #222; }
+        
+        /* Compact View: No video player, extremely dense */
+        #dashboard-container.layout-compact { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+        #dashboard-container.layout-compact .stream-card .video-wrapper { display: none !important; }
+        #dashboard-container.layout-compact .stream-card { padding-bottom: 0; }
+        #dashboard-container.layout-compact .card-content { padding: 12px; }
+        #dashboard-container.layout-compact .status-indicators { gap: 4px; padding: 8px; margin-top: 8px; }
+        #dashboard-container.layout-compact .action-btns { display: none; }
+        
+        /* List View: Row-based table-like list */
+        #dashboard-container.layout-list { display: flex; flex-direction: column; gap: 8px; }
+        #dashboard-container.layout-list .stream-card { flex-direction: row; height: 56px; padding: 0 16px; align-items: center; border-radius: 8px; }
+        #dashboard-container.layout-list .stream-card .video-wrapper { display: none !important; }
+        #dashboard-container.layout-list .card-content { flex-direction: row; padding: 0; align-items: center; width: 100%; gap: 24px; }
+        #dashboard-container.layout-list .card-meta { width: 120px; margin: 0; flex-shrink: 0; }
+        #dashboard-container.layout-list .card-title { margin: 0; width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; flex-shrink: 0; }
+        #dashboard-container.layout-list .status-indicators { flex-direction: row; margin: 0; padding: 0; border: none; background: transparent; flex: 1; gap: 24px; justify-content: flex-start; }
+        #dashboard-container.layout-list .status-indicators > div { display: flex; gap: 6px; align-items: center; font-size: 12px; margin: 0 !important; }
+        #dashboard-container.layout-list .status-label { display: none; }
+        #dashboard-container.layout-list .action-btns { margin: 0; width: auto; flex-shrink: 0; }
+        #dashboard-container.layout-list .action-btns button { padding: 4px 12px; }
+
+        /* Badge Standard */
+        .badge { display: inline-flex; items-center: center; gap: 4px; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid; }
+        .badge-danger { background: rgba(239, 68, 68, 0.1); color: #EF4444; border-color: rgba(239, 68, 68, 0.2); }
+        .badge-warning { background: rgba(245, 158, 11, 0.1); color: #F59E0B; border-color: rgba(245, 158, 11, 0.2); }
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: #10B981; border-color: rgba(16, 185, 129, 0.2); }
+        .badge-info { background: rgba(59, 130, 246, 0.1); color: #3B82F6; border-color: rgba(59, 130, 246, 0.2); }
+        .badge-neutral { background: rgba(136, 136, 136, 0.1); color: #888888; border-color: rgba(136, 136, 136, 0.2); }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col antialiased">
+
+    <!-- TOP HEADER -->
+    <header class="h-14 flex items-center justify-between px-5 shrink-0 bg-surface border-b border-border z-40 relative">
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2.5 font-semibold tracking-tight text-white sidebar-header-text">
+                <div class="w-6 h-6 rounded bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
+                    <i class="ph-bold ph-activity"></i>
+                </div>
+                Live Stream Monitoring
+            </div>
+            
+            <div class="h-4 w-px bg-border"></div>
+            
+            <div class="badge badge-success items-center gap-1.5 px-2 py-1">
+                <div class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></div>
+                SYSTEM HEALTHY
+            </div>
+            
+            <div class="flex items-center gap-3 text-xs text-textSecondary font-medium pl-2">
+                <span class="flex items-center gap-1.5" title="Active Streams"><i class="ph-fill ph-monitor-play"></i> 14</span>
+                <span class="flex items-center gap-1.5 text-danger" title="Open Incidents"><i class="ph-fill ph-warning-circle"></i> 2</span>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+            <div class="relative group">
+                <i class="ph ph-magnifying-glass absolute left-2.5 top-2 text-textSecondary"></i>
+                <input type="text" placeholder="Search events, platforms..." class="bg-bg border border-border rounded-md pl-8 pr-8 py-1.5 w-64 text-xs focus:outline-none focus:border-accent text-white placeholder-textSecondary transition-colors">
+                <div class="absolute right-2 top-1.5 flex gap-1">
+                    <span class="text-[9px] font-mono bg-surface border border-border px-1 rounded text-textSecondary">⌘K</span>
+                </div>
+            </div>
+            
+            <button onclick="openModal('wizard-add-stream')" class="bg-accent text-white px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-accentHover transition-colors shadow-sm flex items-center gap-1.5">
+                <i class="ph-bold ph-plus"></i> Add Event
+            </button>
+
+            <div class="h-4 w-px bg-border"></div>
+
+            <button onclick="toggleDrawer('drawer-notifications')" class="relative w-8 h-8 flex items-center justify-center rounded-md text-textSecondary hover:text-white hover:bg-surfaceLight transition-colors">
+                <i class="ph ph-bell text-lg"></i>
+                <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-danger rounded-full ring-2 ring-surface"></span>
+            </button>
+            
+            <div class="relative ml-2">
+                <button onclick="toggleDropdown('dropdown-user')" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    <img src="https://ui-avatars.com/api/?name=Iva+S&background=1C1C1C&color=fff&rounded=true&bold=true" class="w-8 h-8 rounded-full border border-border" alt="Profile">
+                </button>
+                
+                <!-- User Profile Dropdown -->
+                <div id="dropdown-user" class="hidden absolute right-0 top-10 w-56 bg-surface border border-border rounded-lg shadow-modal overflow-hidden animate-fade-in z-50">
+                    <div class="px-4 py-3 border-b border-border bg-surfaceLight/50">
+                        <div class="font-semibold text-white text-sm">Iva Support</div>
+                        <div class="text-xs text-textSecondary">Shift Coordinator</div>
+                    </div>
+                    <div class="p-1.5 space-y-0.5">
+                        <button onclick="navTo('view-profile')" class="w-full text-left px-3 py-2 text-xs font-medium text-textSecondary hover:text-white hover:bg-surfaceLight rounded transition-colors flex items-center gap-2"><i class="ph ph-user text-sm"></i> Profile</button>
+                        <button onclick="navTo('view-settings'); setTab('set', 'set-notif')" class="w-full text-left px-3 py-2 text-xs font-medium text-textSecondary hover:text-white hover:bg-surfaceLight rounded transition-colors flex items-center gap-2"><i class="ph ph-bell-ringing text-sm"></i> Notifications</button>
+                        <button onclick="navTo('view-auth')" class="w-full text-left px-3 py-2 text-xs font-medium text-textSecondary hover:text-white hover:bg-surfaceLight rounded transition-colors flex items-center gap-2"><i class="ph ph-key text-sm"></i> My Accounts</button>
+                    </div>
+                    <div class="p-1.5 border-t border-border">
+                        <button class="w-full text-left px-3 py-2 text-xs font-medium text-danger hover:bg-dangerBg rounded transition-colors flex items-center gap-2"><i class="ph ph-sign-out text-sm"></i> Sign Out</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside id="main-sidebar" class="w-[220px] border-r border-border bg-surface flex flex-col justify-between shrink-0 z-30 pt-4 pb-3 transition-all duration-300 overflow-y-auto hide-scrollbar">
+            <nav class="px-3 space-y-6 flex-1">
+                
+                <div>
+                    <div class="nav-group-title text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 px-3 transition-all duration-300">Live Operations</div>
+                    <div class="space-y-1">
+                        <button onclick="navTo('view-dashboard')" id="nav-view-dashboard" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-md bg-surfaceLight text-white shadow-sm border border-border transition-colors text-xs font-medium" title="Event Dashboard">
+                            <i class="ph ph-squares-four text-lg shrink-0"></i> <span class="nav-label truncate">Event Dashboard</span>
+                        </button>
+                        <button onclick="navTo('view-incidents')" id="nav-view-incidents" class="nav-btn w-full flex items-center justify-between px-3 py-2 rounded-md text-textSecondary hover:text-white hover:bg-surfaceLight transition-colors text-xs font-medium group" title="Incident Center">
+                            <div class="flex items-center gap-3"><i class="ph ph-warning-circle text-lg shrink-0 group-hover:text-danger transition-colors"></i> <span class="nav-label truncate">Incident Center</span></div>
+                            <span class="nav-badge badge badge-danger px-1.5 py-0.5 text-[9px]">2</span>
+                        </button>
+                        <button onclick="navTo('view-auth')" id="nav-view-auth" class="nav-btn w-full flex items-center justify-between px-3 py-2 rounded-md text-textSecondary hover:text-white hover:bg-surfaceLight transition-colors text-xs font-medium group" title="Account Access">
+                            <div class="flex items-center gap-3"><i class="ph ph-lock-key text-lg shrink-0 group-hover:text-warning transition-colors"></i> <span class="nav-label truncate">Account Access</span></div>
+                            <span class="nav-badge badge badge-warning px-1.5 py-0.5 text-[9px]">1</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="nav-group-title text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 px-3 transition-all duration-300">Configuration</div>
+                    <div class="space-y-1">
+                        <button onclick="navTo('view-slack')" id="nav-view-slack" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-md text-textSecondary hover:text-white hover:bg-surfaceLight transition-colors text-xs font-medium group" title="Slack Alerts">
+                            <i class="ph ph-slack-logo text-lg shrink-0 group-hover:text-purple transition-colors"></i> <span class="nav-label truncate">Slack Alerts</span>
+                        </button>
+                        <button onclick="navTo('view-settings')" id="nav-view-settings" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-md text-textSecondary hover:text-white hover:bg-surfaceLight transition-colors text-xs font-medium group" title="Platform Settings">
+                            <i class="ph ph-gear text-lg shrink-0 group-hover:text-white transition-colors"></i> <span class="nav-label truncate">Settings</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="nav-group-title text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 px-3 transition-all duration-300">Reporting</div>
+                    <div class="space-y-1">
+                        <button onclick="navTo('view-ops')" id="nav-view-ops" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-md text-textSecondary hover:text-white hover:bg-surfaceLight transition-colors text-xs font-medium group" title="Ops Overview">
+                            <i class="ph ph-chart-line-up text-lg shrink-0 group-hover:text-accent transition-colors"></i> <span class="nav-label truncate">Ops Overview</span>
+                        </button>
+                        <button onclick="navTo('view-reports')" id="nav-view-reports" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-md text-textSecondary hover:text-white hover:bg-surfaceLight transition-colors text-xs font-medium group" title="Reports">
+                            <i class="ph ph-file-text text-lg shrink-0 group-hover:text-accent transition-colors"></i> <span class="nav-label truncate">Reports</span>
+                        </button>
+                    </div>
+                </div>
+
+            </nav>
+            
+            <div class="px-3 mt-auto space-y-2">
+                <button onclick="openModal('wizard-add-stream')" class="w-full bg-white text-black px-3 py-2 rounded-md text-xs font-semibold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 shadow-sm" title="Add Event">
+                    <i class="ph-bold ph-plus shrink-0"></i> <span class="nav-label">Add Event</span>
+                </button>
+                <button onclick="toggleSidebar()" class="w-full flex items-center justify-center py-2 text-textMuted hover:text-textSecondary transition-colors" title="Collapse Sidebar">
+                    <i class="ph ph-arrows-left-right text-lg"></i>
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="flex-1 overflow-y-auto bg-bg relative scroll-smooth" id="main-content">
+            
+            <!-- ========================================== -->
+            <!-- VIEW: DASHBOARD -->
+            <!-- ========================================== -->
+            <div id="view-dashboard" class="view-panel p-6 max-w-[1800px] mx-auto pb-24 animate-fade-in">
+                
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h1 class="text-xl font-semibold text-white tracking-tight">Event Dashboard</h1>
+                        <p class="text-xs text-textSecondary mt-1">Monitoring 14 streams across 5 platforms.</p>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 bg-surface border border-border rounded-md p-1">
+                        <button onclick="setDashboardLayout('grid')" id="layout-grid" class="layout-btn bg-surfaceLight text-white px-3 py-1.5 rounded flex items-center gap-2 text-xs font-medium shadow-sm border border-borderLight transition-all"><i class="ph-bold ph-squares-four text-sm"></i> Grid</button>
+                        <button onclick="setDashboardLayout('compact')" id="layout-compact" class="layout-btn text-textSecondary hover:text-white px-3 py-1.5 rounded flex items-center gap-2 text-xs font-medium transition-all border border-transparent"><i class="ph-bold ph-grid-four text-sm"></i> Compact</button>
+                        <button onclick="setDashboardLayout('list')" id="layout-list" class="layout-btn text-textSecondary hover:text-white px-3 py-1.5 rounded flex items-center gap-2 text-xs font-medium transition-all border border-transparent"><i class="ph-bold ph-list-dashes text-sm"></i> List</button>
+                    </div>
+                </div>
+
+                <!-- GRID CONTAINER (Controlled by CSS classes) -->
+                <div id="dashboard-container" class="layout-grid">
+                    
+                    <!-- Tile 1: HEALTHY -->
+                    <div class="stream-card flex flex-col bg-surface border border-border rounded-xl overflow-hidden hover:border-borderLight transition-colors relative shadow-sm">
+                        <div class="video-wrapper relative w-full bg-black group">
+                            <img src="https://images.unsplash.com/photo-1593341646782-e0b495cff86d?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover opacity-80" alt="Viewer">
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden">
+                                <img src="https://images.unsplash.com/photo-1593341646782-e0b495cff86d?auto=format&fit=crop&w=300&q=80" class="w-full h-full object-cover opacity-90 brightness-110" alt="Source">
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-success shadow-sm">
+                                <span class="w-1.5 h-1.5 rounded-full bg-success"></span> Healthy
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex items-center gap-2 mb-2">
+                                <img src="https://ui-avatars.com/api/?name=CEV&background=0D8ABC&color=fff&rounded=true&size=16" class="rounded-full">
+                                <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">EuroVolley TV</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">Albania vs Romania</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-success font-medium">Playing</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-success font-medium">Active</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Audio:</span><span class="text-white">Present</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button class="flex-1 bg-surfaceLight hover:bg-border border border-border py-1.5 rounded text-xs font-medium text-white transition-colors">Recheck</button>
+                                <button class="w-8 flex items-center justify-center bg-surfaceLight hover:bg-border border border-border rounded text-textSecondary transition-colors"><i class="ph-bold ph-dots-three"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 2: CRITICAL - Source Outage -->
+                    <div class="stream-card flex flex-col bg-surface border border-danger/40 rounded-xl overflow-hidden hover:border-danger transition-colors relative shadow-glow-danger">
+                        <div class="video-wrapper relative w-full bg-black group">
+                            <!-- Main: Viewer Experience -->
+                            <img src="https://images.unsplash.com/photo-1593341646782-e0b495cff86d?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover opacity-30 grayscale" alt="Viewer">
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <div class="w-8 h-8 border-[3px] border-borderLight border-t-white rounded-full animate-spin mb-2"></div>
+                                <span class="text-[10px] font-semibold text-white drop-shadow-md bg-black/60 px-2 py-0.5 rounded">Playback Stopped</span>
+                            </div>
+                            <!-- Inset: Source Feed -->
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden flex">
+                                <div class="flex-1 bg-gray-400"></div><div class="flex-1 bg-yellow-500"></div><div class="flex-1 bg-cyan-500"></div><div class="flex-1 bg-green-500"></div><div class="flex-1 bg-fuchsia-500"></div><div class="flex-1 bg-red-500"></div><div class="flex-1 bg-blue-600"></div>
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-danger shadow-sm">
+                                <i class="ph-bold ph-warning"></i> Incident Active
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex justify-between items-center mb-2">
+                                <div class="flex items-center gap-2">
+                                    <img src="https://ui-avatars.com/api/?name=CEV&background=0D8ABC&color=fff&rounded=true&size=16" class="rounded-full">
+                                    <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">EuroVolley TV</span>
+                                </div>
+                                <span class="text-[10px] font-mono text-danger">04m 12s</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">Slovenia vs Montenegro</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-danger font-medium">Frozen</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-danger font-medium">Offline</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Diagnosis:</span><span class="text-white text-right max-w-[120px] truncate" title="Venue Feed Interrupted">Venue Feed Interrupted</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button onclick="navTo('view-incident-detail')" class="flex-1 bg-dangerBg hover:bg-dangerBg/80 text-danger border border-danger/30 py-1.5 rounded text-xs font-semibold transition-colors">Investigate</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 3: DELIVERY ISSUE -->
+                    <div class="stream-card flex flex-col bg-surface border border-warning/40 rounded-xl overflow-hidden hover:border-warning transition-colors relative shadow-glow-warning">
+                        <div class="video-wrapper relative w-full bg-black">
+                            <!-- Main: Viewer Experience -->
+                            <img src="https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover opacity-40" alt="Viewer">
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <div class="w-8 h-8 border-[3px] border-warning/30 border-t-warning rounded-full animate-spin mb-2"></div>
+                                <span class="text-[10px] font-semibold text-white drop-shadow-md bg-black/60 px-2 py-0.5 rounded">Buffering</span>
+                            </div>
+                            <!-- Inset: Source Feed (Healthy) -->
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden">
+                                <img src="https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80" class="w-full h-full object-cover opacity-90" alt="Source">
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-warning shadow-sm">
+                                Delivery Issue
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex justify-between items-center mb-2">
+                                <div class="flex items-center gap-2">
+                                    <img src="https://ui-avatars.com/api/?name=EH&background=fff&color=000&rounded=true&size=16" class="rounded-full">
+                                    <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">EHFTV</span>
+                                </div>
+                                <span class="text-[10px] font-mono text-warning">01m 20s</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">IK Savehof vs Skara HF</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-warning font-medium">Stalling</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-success font-medium">Healthy</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Diagnosis:</span><span class="text-white text-right max-w-[120px] truncate" title="Platform/CDN Issue">Platform/CDN Issue</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button onclick="navTo('view-incident-detail')" class="flex-1 bg-warningBg hover:bg-warningBg/80 text-warning border border-warning/30 py-1.5 rounded text-xs font-semibold transition-colors">Investigate</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 4: WARNING - Auth Expired -->
+                    <div class="stream-card flex flex-col bg-surface border border-warning/40 rounded-xl overflow-hidden hover:border-warning transition-colors relative shadow-glow-warning">
+                        <div class="video-wrapper relative w-full bg-black flex items-center justify-center">
+                            <div class="text-center">
+                                <i class="ph-fill ph-lock-key text-3xl text-warning mb-2 drop-shadow-sm"></i>
+                                <div class="text-[10px] font-semibold text-warning uppercase tracking-widest bg-black/60 px-2 py-0.5 rounded">Auth Required</div>
+                            </div>
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden">
+                                <img src="https://images.unsplash.com/photo-1518605368461-1e1296221fea?auto=format&fit=crop&w=300&q=80" class="w-full h-full object-cover opacity-50" alt="Source">
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-warning shadow-sm">
+                                Session Expired
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex justify-between items-center mb-2">
+                                <div class="flex items-center gap-2">
+                                    <img src="https://ui-avatars.com/api/?name=II&background=E5484D&color=fff&rounded=true&size=16" class="rounded-full">
+                                    <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">IIHF.TV</span>
+                                </div>
+                                <span class="text-[10px] font-mono text-warning">07m 05s</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">Canada vs Finland</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-warning font-medium">Login Wall</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-success font-medium">Healthy</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Account:</span><span class="text-white">Tamara</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button onclick="openModal('wizard-add-auth')" class="flex-1 bg-warningBg hover:bg-warningBg/80 text-warning border border-warning/30 py-1.5 rounded text-xs font-semibold transition-colors flex justify-center items-center gap-1.5"><i class="ph-bold ph-key"></i> Reconnect</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 5: AUDIO MISSING -->
+                    <div class="stream-card flex flex-col bg-surface border border-warning/40 rounded-xl overflow-hidden hover:border-warning transition-colors relative shadow-glow-warning">
+                        <div class="video-wrapper relative w-full bg-black">
+                            <img src="https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover opacity-80" alt="Viewer">
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden">
+                                <img src="https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=300&q=80" class="w-full h-full object-cover opacity-90 brightness-110" alt="Source">
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-warning shadow-sm">
+                                <i class="ph-bold ph-speaker-slash"></i> Audio Missing
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex justify-between items-center mb-2">
+                                <div class="flex items-center gap-2">
+                                    <img src="https://ui-avatars.com/api/?name=NL&background=111&color=fff&rounded=true&size=16" class="rounded-full">
+                                    <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">NLL+</span>
+                                </div>
+                                <span class="text-[10px] font-mono text-warning">08m 42s</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">Buffalo vs Toronto</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-success font-medium">Playing</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-success font-medium">Healthy</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Diagnosis:</span><span class="text-white text-right max-w-[120px] truncate" title="Production Audio Dropped">Production Audio Dropped</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button onclick="navTo('view-incident-detail')" class="flex-1 bg-warningBg hover:bg-warningBg/80 text-warning border border-warning/30 py-1.5 rounded text-xs font-semibold transition-colors">Investigate</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tile 6: STARTING SOON -->
+                    <div class="stream-card flex flex-col bg-surface border border-border rounded-xl overflow-hidden hover:border-borderLight transition-colors relative shadow-sm">
+                        <div class="video-wrapper relative w-full bg-black flex items-center justify-center">
+                            <div class="text-center px-4">
+                                <div class="badge badge-neutral bg-surface px-3 py-1.5 shadow-sm">Event Starting Soon</div>
+                            </div>
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden flex items-center justify-center">
+                                <img src="https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80" class="w-full h-full object-cover opacity-40 grayscale" alt="Source">
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-info shadow-sm">
+                                Pre-Match
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex items-center gap-2 mb-2">
+                                <img src="https://ui-avatars.com/api/?name=TR&background=111&color=fff&rounded=true&size=16" class="rounded-full">
+                                <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">TriathlonLive</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">San Francisco T100</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-white">Holding Slate</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-warning font-medium">Warm-up Active</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Diagnosis:</span><span class="text-white">Awaiting platform switch</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button class="flex-1 bg-surfaceLight hover:bg-border border border-border py-1.5 rounded text-xs font-medium text-white transition-colors">Recheck</button>
+                                <button class="w-8 flex items-center justify-center bg-surfaceLight hover:bg-border border border-border rounded text-textSecondary transition-colors"><i class="ph-bold ph-dots-three"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 7: GEO BLOCK -->
+                    <div class="stream-card flex flex-col bg-surface border border-purple/40 rounded-xl overflow-hidden hover:border-purple transition-colors relative shadow-[0_0_15px_rgba(139,92,246,0.1)]">
+                        <div class="video-wrapper relative w-full bg-black flex items-center justify-center">
+                            <div class="text-center px-4">
+                                <i class="ph-fill ph-globe-hemisphere-west text-3xl text-purple mb-2 drop-shadow-sm opacity-80"></i>
+                                <div class="text-[10px] font-semibold text-white text-center bg-black/80 px-2 py-1 rounded leading-tight">Content not available in your region</div>
+                            </div>
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden">
+                                <img src="https://images.unsplash.com/photo-1593341646782-e0b495cff86d?auto=format&fit=crop&w=300&q=80" class="w-full h-full object-cover opacity-60" alt="Source">
+                            </div>
+                            <div class="absolute top-2 left-2 badge bg-purple/10 text-purple border-purple/20 shadow-sm">
+                                Geo Restricted
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex items-center gap-2 mb-2">
+                                <img src="https://ui-avatars.com/api/?name=TR&background=111&color=fff&rounded=true&size=16" class="rounded-full">
+                                <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">TriathlonLive</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">WTS - Yokohama</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-purple">Geo Error Page</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-success font-medium">Healthy</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Host Region:</span><span class="text-white">Europe (GB)</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button class="flex-1 bg-purpleBg hover:bg-purpleBg/80 text-purple border border-purple/30 py-1.5 rounded text-xs font-semibold transition-colors">Change VPN Node</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 8: EVENT ENDED -->
+                    <div class="stream-card flex flex-col bg-[#050505] border border-[#1A1A1A] rounded-xl overflow-hidden transition-colors relative opacity-60">
+                        <div class="video-wrapper relative w-full bg-black flex items-center justify-center border-b border-[#1A1A1A]">
+                            <div class="text-center px-4">
+                                <i class="ph-fill ph-check-circle text-2xl text-[#666666] mb-1"></i>
+                                <div class="text-[10px] font-semibold text-[#888888] uppercase tracking-wider">Broadcast Concluded</div>
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-neutral shadow-sm border-[#333]">Ended</div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex items-center gap-2 mb-2 opacity-60">
+                                <img src="https://ui-avatars.com/api/?name=EH&background=fff&color=000&rounded=true&size=16" class="rounded-full">
+                                <span class="text-[11px] text-[#666666] font-semibold uppercase tracking-wide">EHFTV</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-[#888888] leading-snug mb-3">PSG vs Veszprem</h3>
+                            <div class="status-indicators space-y-1.5 bg-[#0A0A0A] p-2.5 rounded border border-[#1A1A1A] mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-[#666666]">Status:</span><span class="text-[#888888]">Monitoring Stopped</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-[#666666]">Uptime:</span><span class="text-[#888888]">99.8%</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button onclick="navTo('view-reports')" class="flex-1 bg-transparent hover:bg-[#111111] text-[#888888] border border-[#222222] py-1.5 rounded text-xs font-medium transition-colors">View Report</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 9: RECOVERING -->
+                    <div class="stream-card flex flex-col bg-surface border border-info/40 rounded-xl overflow-hidden hover:border-info transition-colors relative shadow-[0_0_15px_rgba(59,130,246,0.1)]">
+                        <div class="video-wrapper relative w-full bg-black">
+                            <img src="https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover opacity-80" alt="Viewer">
+                            <div class="absolute bottom-2 right-2 w-[35%] aspect-video bg-black border border-borderLight rounded shadow-lg overflow-hidden">
+                                <img src="https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?auto=format&fit=crop&w=300&q=80" class="w-full h-full object-cover opacity-90 brightness-110" alt="Source">
+                            </div>
+                            <div class="absolute inset-0 bg-info/10 flex items-center justify-center">
+                                <div class="bg-infoBg text-info border border-info/30 px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-2 backdrop-blur-sm">
+                                    <i class="ph-bold ph-arrows-clockwise animate-spin"></i> Validating Recovery
+                                </div>
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-info shadow-sm">
+                                Recovering
+                            </div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex justify-between items-center mb-2">
+                                <div class="flex items-center gap-2">
+                                    <img src="https://ui-avatars.com/api/?name=HL&background=00529F&color=FFD100&rounded=true&size=16" class="rounded-full">
+                                    <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">Handbollsligan Live</span>
+                                </div>
+                                <span class="text-[10px] font-mono text-info">20s left</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-white leading-snug mb-3">Hammarby vs Ystads IF</h3>
+                            <div class="status-indicators space-y-1.5 bg-surfaceLight p-2.5 rounded border border-border mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Viewer:</span><span class="text-success font-medium">Playing</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Source:</span><span class="text-success font-medium">Healthy</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Action:</span><span class="text-white">Awaiting confirmation delay</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button class="flex-1 bg-surfaceLight hover:bg-border border border-border py-1.5 rounded text-xs font-medium text-white transition-colors">Force Sync</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile 10: MONITORING PAUSED -->
+                    <div class="stream-card flex flex-col bg-[#050505] border border-border rounded-xl overflow-hidden transition-colors relative opacity-80 border-dashed">
+                        <div class="video-wrapper relative w-full bg-black flex items-center justify-center border-b border-border">
+                            <div class="text-center px-4">
+                                <i class="ph-fill ph-pause-circle text-3xl text-textSecondary mb-2"></i>
+                                <div class="text-xs font-medium text-white">Monitoring Paused</div>
+                                <div class="text-[10px] text-textSecondary mt-1">Manual override by Iva</div>
+                            </div>
+                            <div class="absolute top-2 left-2 badge badge-neutral shadow-sm border-[#333]">Paused</div>
+                        </div>
+                        <div class="card-content p-4 flex flex-col">
+                            <div class="card-meta flex items-center gap-2 mb-2">
+                                <img src="https://ui-avatars.com/api/?name=HA&background=EF4444&color=fff&rounded=true&size=16" class="rounded-full">
+                                <span class="text-[11px] text-textSecondary font-semibold uppercase tracking-wide">HapoelTV</span>
+                            </div>
+                            <h3 class="card-title text-[13px] font-semibold text-textSecondary leading-snug mb-3">Hapoel Tel Aviv vs Maccabi</h3>
+                            <div class="status-indicators space-y-1.5 bg-[#0A0A0A] p-2.5 rounded border border-[#1A1A1A] mt-auto">
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Engine:</span><span class="text-textSecondary font-mono">Suspended</span></div>
+                                <div class="flex justify-between text-xs"><span class="status-label text-textSecondary">Alerts:</span><span class="text-textSecondary font-mono">Muted</span></div>
+                            </div>
+                            <div class="action-btns mt-3 flex gap-2">
+                                <button class="flex-1 bg-surface hover:bg-surfaceHover text-white border border-border py-1.5 rounded text-xs font-medium transition-colors flex justify-center items-center gap-1.5"><i class="ph-bold ph-play"></i> Resume</button>
+                                <button class="w-8 flex items-center justify-center bg-surface hover:bg-dangerBg border border-border hover:border-danger hover:text-danger rounded text-textSecondary transition-colors" title="Remove Event" onclick="openModal('modal-remove-event')"><i class="ph-bold ph-trash"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- INCIDENTS LIST SCREEN -->
+            <!-- ========================================== -->
+            <div id="view-incidents" class="view-panel p-6 max-w-[1400px] mx-auto hidden pb-24 animate-fade-in">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 class="text-xl font-semibold text-white tracking-tight">Incident Center</h1>
+                        <p class="text-xs text-textSecondary mt-1">Review active anomalies and historical outage reports.</p>
+                    </div>
+                    <div class="flex gap-1.5 bg-surface border border-border p-1 rounded-md">
+                        <button id="btn-inc-active" onclick="setTab('inc', 'inc-active')" class="inc-btn px-4 py-1.5 bg-surfaceLight border border-borderLight text-white text-xs font-medium rounded shadow-sm transition-all">Active <span class="bg-danger/20 text-danger px-1 rounded text-[10px] ml-1">2</span></button>
+                        <button id="btn-inc-resolved" onclick="setTab('inc', 'inc-resolved')" class="inc-btn px-4 py-1.5 text-textSecondary border border-transparent text-xs font-medium rounded hover:text-white transition-all">Resolved</button>
+                        <button id="btn-inc-auth" onclick="setTab('inc', 'inc-auth')" class="inc-btn px-4 py-1.5 text-textSecondary border border-transparent text-xs font-medium rounded hover:text-white transition-all">Auth Issues</button>
+                    </div>
+                </div>
+                
+                <div class="bg-surface border border-border rounded-xl overflow-hidden shadow-sm">
+                    <!-- Tab: Active -->
+                    <table id="inc-active" class="inc-tab w-full text-left text-sm">
+                        <thead class="bg-surfaceLight border-b border-border text-[11px] font-semibold text-textSecondary uppercase tracking-wider">
+                            <tr>
+                                <th class="px-5 py-3">Severity</th>
+                                <th class="px-5 py-3">Platform & Event</th>
+                                <th class="px-5 py-3">Diagnosis</th>
+                                <th class="px-5 py-3 font-mono">Started</th>
+                                <th class="px-5 py-3 font-mono">Duration</th>
+                                <th class="px-5 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <tr class="hover:bg-surfaceHover transition-colors cursor-pointer group bg-dangerBg/10" onclick="navTo('view-incident-detail')">
+                                <td class="px-5 py-3.5"><span class="badge badge-danger"><span class="w-1.5 h-1.5 bg-danger rounded-full animate-pulse mr-1"></span> CRITICAL</span></td>
+                                <td class="px-5 py-3.5"><div class="font-semibold text-white text-[13px]">CEV EuroVolley TV</div><div class="text-xs text-textSecondary mt-0.5">Slovenia vs Montenegro</div></td>
+                                <td class="px-5 py-3.5 text-white text-[13px] font-medium">Venue Feed Interrupted</td>
+                                <td class="px-5 py-3.5 font-mono text-textSecondary text-xs">02:23:25</td>
+                                <td class="px-5 py-3.5 font-mono text-danger text-xs font-semibold">04m 12s</td>
+                                <td class="px-5 py-3.5 text-right"><button class="px-3 py-1.5 border border-border rounded text-white text-xs font-medium hover:bg-surfaceLight transition-colors">Details</button></td>
+                            </tr>
+                            <tr class="hover:bg-surfaceHover transition-colors cursor-pointer group" onclick="navTo('view-incident-detail')">
+                                <td class="px-5 py-3.5"><span class="badge badge-warning">WARNING</span></td>
+                                <td class="px-5 py-3.5"><div class="font-semibold text-white text-[13px]">NLL+</div><div class="text-xs text-textSecondary mt-0.5">Buffalo vs Toronto</div></td>
+                                <td class="px-5 py-3.5 text-white text-[13px] font-medium">Production Audio Dropped</td>
+                                <td class="px-5 py-3.5 font-mono text-textSecondary text-xs">01:15:00</td>
+                                <td class="px-5 py-3.5 font-mono text-warning text-xs font-semibold">08m 42s</td>
+                                <td class="px-5 py-3.5 text-right"><button class="px-3 py-1.5 border border-border rounded text-white text-xs font-medium hover:bg-surfaceLight transition-colors">Details</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <!-- Tab: Resolved -->
+                    <table id="inc-resolved" class="inc-tab hidden w-full text-left text-sm">
+                        <thead class="bg-surfaceLight border-b border-border text-[11px] font-semibold text-textSecondary uppercase tracking-wider">
+                            <tr>
+                                <th class="px-5 py-3">Severity</th>
+                                <th class="px-5 py-3">Platform & Event</th>
+                                <th class="px-5 py-3">Diagnosis</th>
+                                <th class="px-5 py-3 font-mono">Started</th>
+                                <th class="px-5 py-3 font-mono">Downtime</th>
+                                <th class="px-5 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <tr class="hover:bg-surfaceHover transition-colors cursor-pointer group">
+                                <td class="px-5 py-3.5"><span class="badge badge-success">RESOLVED</span></td>
+                                <td class="px-5 py-3.5"><div class="font-semibold text-white text-[13px]">EHFTV</div><div class="text-xs text-textSecondary mt-0.5">Kiel vs Barcelona</div></td>
+                                <td class="px-5 py-3.5 text-white text-[13px]">Platform/CDN Delivery Issue</td>
+                                <td class="px-5 py-3.5 font-mono text-textSecondary text-xs">00:45:10</td>
+                                <td class="px-5 py-3.5 font-mono text-textSecondary text-xs font-medium">02m 15s</td>
+                                <td class="px-5 py-3.5 text-right"><button class="px-3 py-1.5 border border-border rounded text-textSecondary text-xs font-medium hover:bg-surfaceLight hover:text-white transition-colors">Report</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <!-- Tab: Auth Issues -->
+                    <table id="inc-auth" class="inc-tab hidden w-full text-left text-sm">
+                        <thead class="bg-surfaceLight border-b border-border text-[11px] font-semibold text-textSecondary uppercase tracking-wider">
+                            <tr>
+                                <th class="px-5 py-3">Severity</th>
+                                <th class="px-5 py-3">Platform & Account</th>
+                                <th class="px-5 py-3">Diagnosis</th>
+                                <th class="px-5 py-3 font-mono">Started</th>
+                                <th class="px-5 py-3 font-mono">Duration</th>
+                                <th class="px-5 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <tr class="hover:bg-surfaceHover transition-colors cursor-pointer group">
+                                <td class="px-5 py-3.5"><span class="badge badge-warning">AUTH REQ</span></td>
+                                <td class="px-5 py-3.5"><div class="font-semibold text-white text-[13px]">IIHF.TV</div><div class="text-xs text-textSecondary mt-0.5">Account: Tamara</div></td>
+                                <td class="px-5 py-3.5 text-white text-[13px]">Session Expired (Login Wall)</td>
+                                <td class="px-5 py-3.5 font-mono text-textSecondary text-xs">01:14:00</td>
+                                <td class="px-5 py-3.5 font-mono text-warning text-xs font-semibold">12m 40s</td>
+                                <td class="px-5 py-3.5 text-right"><button onclick="openModal('wizard-add-auth')" class="px-3 py-1.5 border border-warning/50 bg-warningBg text-warning rounded text-xs font-semibold hover:bg-warning/20 transition-colors">Reconnect</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- VIEW: INCIDENT DETAIL -->
+            <div id="view-incident-detail" class="view-panel hidden p-6 max-w-[1400px] mx-auto pb-24 animate-fade-in">
+                
+                <button onclick="navTo('view-incidents')" class="text-textSecondary hover:text-white flex items-center gap-2 text-xs mb-6 font-medium transition-colors w-fit">
+                    <i class="ph-bold ph-arrow-left"></i> Back to Incidents
+                </button>
+                
+                <div class="flex items-start justify-between mb-6">
+                    <div>
+                        <div class="flex items-center gap-3 mb-2">
+                            <h1 class="text-2xl font-bold tracking-tight text-white font-mono">INC-2026-042</h1>
+                            <span class="badge badge-danger">CRITICAL</span>
+                            <span class="badge badge-neutral">ACTIVE</span>
+                        </div>
+                        <p class="text-[13px] text-textSecondary">Slovenia VS Montenegro • CEV EuroVolley TV • Monitored via: Iva's Account</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openModal('modal-copy-summary')" class="bg-surface border border-border text-white px-4 py-2 rounded-md text-xs font-semibold hover:bg-surfaceLight transition-colors shadow-sm flex items-center gap-2"><i class="ph-bold ph-copy"></i> Copy Summary</button>
+                        <button onclick="openModal('modal-escalate')" class="bg-white text-black px-4 py-2 rounded-md text-xs font-semibold hover:bg-gray-200 transition-colors shadow-sm flex items-center gap-2"><i class="ph-bold ph-siren"></i> Escalate to NOC</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-12 gap-6">
+                    <!-- Left Col -->
+                    <div class="col-span-5 space-y-6">
+                        <!-- Assessment Box -->
+                        <div class="bg-dangerBg border border-danger/30 rounded-xl p-5 relative overflow-hidden shadow-glow-danger">
+                            <div class="text-[10px] font-bold text-danger uppercase tracking-widest mb-2 flex items-center gap-1.5"><i class="ph-fill ph-warning-octagon text-sm"></i> Incident Assessment</div>
+                            <div class="text-lg font-semibold text-white mb-4 leading-tight">Venue Feed Interrupted</div>
+                            
+                            <div class="space-y-3.5 text-[13px] text-textPrimary leading-relaxed">
+                                <div class="flex items-start gap-2.5">
+                                    <i class="ph-fill ph-caret-right text-danger mt-1 shrink-0"></i>
+                                    <span><strong class="font-semibold text-white">Broadcast Feed:</strong> Stopped delivering new content. No data received from stadium for > 45 seconds.</span>
+                                </div>
+                                <div class="flex items-start gap-2.5">
+                                    <i class="ph-fill ph-caret-right text-danger mt-1 shrink-0"></i>
+                                    <span><strong class="font-semibold text-white">Viewer Experience:</strong> Playback halted across monitored devices. Player interface remains active but frozen.</span>
+                                </div>
+                                <div class="flex items-start gap-2.5">
+                                    <i class="ph-fill ph-caret-right text-danger mt-1 shrink-0"></i>
+                                    <span><strong class="font-semibold text-white">Conclusion:</strong> Issue originates before platform delivery. NOT an OTT app bug.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Timeline -->
+                        <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                            <div class="text-[10px] font-bold text-textSecondary uppercase tracking-widest mb-4">Event Timeline</div>
+                            <div class="relative border-l border-border ml-2 space-y-5 pb-1">
+                                
+                                <div class="relative pl-5">
+                                    <div class="absolute w-2 h-2 bg-success rounded-full -left-[4.5px] top-1"></div>
+                                    <div class="text-[10px] font-mono text-textSecondary mb-0.5">02:23:11 <span class="text-success ml-2 font-bold font-sans tracking-wide uppercase">HEALTHY</span></div>
+                                    <div class="text-[13px] text-white font-medium">Source: Active | Viewer: Playing smoothly</div>
+                                </div>
+
+                                <div class="relative pl-5">
+                                    <div class="absolute w-2 h-2 bg-warning rounded-full -left-[4.5px] top-1"></div>
+                                    <div class="text-[10px] font-mono text-textSecondary mb-0.5">02:23:15 <span class="text-warning ml-2 font-bold font-sans tracking-wide uppercase">WARNING</span></div>
+                                    <div class="text-[13px] text-white font-medium">Source: Stalling | Viewer: Playing smoothly</div>
+                                    <div class="text-[11px] text-textSecondary mt-0.5">Source feed data flow disrupted.</div>
+                                </div>
+
+                                <div class="relative pl-5">
+                                    <div class="absolute w-2 h-2 bg-warning rounded-full -left-[4.5px] top-1"></div>
+                                    <div class="text-[10px] font-mono text-textSecondary mb-0.5">02:23:20 <span class="text-warning ml-2 font-bold font-sans tracking-wide uppercase">WARNING</span></div>
+                                    <div class="text-[13px] text-white font-medium">Source: Stalling | Viewer: Buffering</div>
+                                    <div class="text-[11px] text-textSecondary mt-0.5">Viewer playback caught up to missing data.</div>
+                                </div>
+                                
+                                <div class="relative pl-5">
+                                    <div class="absolute w-2 h-2 bg-danger rounded-full -left-[4.5px] top-1 ring-4 ring-danger/20"></div>
+                                    <div class="text-[10px] font-mono text-textSecondary mb-0.5">02:23:25 <span class="text-danger ml-2 font-bold font-sans tracking-wide uppercase">CRITICAL</span></div>
+                                    <div class="text-[13px] text-white font-medium">Source: Offline | Viewer: Frozen</div>
+                                    <div class="text-[11px] text-danger mt-0.5 font-medium">Outage confirmed. Incident created.</div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Col -->
+                    <div class="col-span-7 space-y-4">
+                        <div class="flex justify-between items-center px-1">
+                            <h3 class="text-[10px] font-bold text-textSecondary uppercase tracking-widest">Composite Visual Audit</h3>
+                            <span class="font-mono text-[10px] text-textSecondary">Captured: 2026-06-06 02:23:45</span>
+                        </div>
+                        
+                        <!-- Visual Composite (Main + PiP) -->
+                        <div class="relative w-full aspect-video bg-black rounded-xl border border-border overflow-hidden shadow-lg">
+                            <!-- Main: Viewer Experience -->
+                            <img src="https://images.unsplash.com/photo-1593341646782-e0b495cff86d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" class="w-full h-full object-cover opacity-30 grayscale" alt="Frozen video">
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <div class="w-10 h-10 rounded-full border-[3px] border-borderLight border-t-white mb-4 animate-spin"></div>
+                                <span class="text-xs font-semibold text-white drop-shadow-md bg-black/50 px-3 py-1 rounded-full border border-borderLight">Playback Halted</span>
+                            </div>
+                            
+                            <!-- Inset: Source Feed -->
+                            <div class="absolute bottom-4 right-4 w-[35%] aspect-video bg-black rounded-lg shadow-modal border border-borderLight overflow-hidden z-10 flex flex-col items-center justify-center relative">
+                                <div class="flex w-full h-full opacity-90">
+                                    <div class="flex-1 bg-gray-400"></div><div class="flex-1 bg-[#D4AF37]"></div><div class="flex-1 bg-[#008B8B]"></div><div class="flex-1 bg-[#228B22]"></div><div class="flex-1 bg-[#BA55D3]"></div><div class="flex-1 bg-[#B22222]"></div><div class="flex-1 bg-[#104E8B]"></div>
+                                </div>
+                                <div class="absolute inset-0 bg-black/50 flex items-center justify-center backdrop-blur-[1px]">
+                                    <span class="text-[10px] font-bold text-white tracking-widest text-center uppercase drop-shadow-md">Source Feed<br>Offline</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: AUTHENTICATION -->
+            <div id="view-auth" class="view-panel hidden p-6 max-w-[1400px] mx-auto pb-24 animate-fade-in">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 class="text-xl font-semibold text-white tracking-tight">Monitoring Accounts</h1>
+                        <p class="text-xs text-textSecondary mt-1">Manage login sessions assigned to monitoring streams.</p>
+                    </div>
+                    <button onclick="openModal('wizard-add-auth')" class="bg-white text-black px-4 py-2 rounded-md text-xs font-semibold hover:bg-gray-200 transition-colors shadow-sm flex items-center gap-2"><i class="ph-bold ph-plus"></i> Add Account</button>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-5">
+                    <!-- Account Card 1 -->
+                    <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <div class="flex justify-between items-start border-b border-borderLight pb-4 mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-surfaceLight flex items-center justify-center text-white font-bold border border-border">IV</div>
+                                <div>
+                                    <div class="text-white font-semibold text-sm">Operator: Iva</div>
+                                    <div class="text-xs text-textSecondary mt-0.5">3 Active Connections</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center bg-surfaceLight p-3 rounded-md border border-border">
+                                <div class="flex items-center gap-2 text-[13px] font-medium text-white"><span class="w-1.5 h-1.5 rounded-full bg-success"></span> CEV EuroVolley TV</div>
+                                <button onclick="toast('Session token refreshed','success')" class="text-[11px] font-medium text-textSecondary hover:text-white transition-colors border border-border px-2 py-1 rounded hover:bg-surface">Refresh Token</button>
+                            </div>
+                            <div class="flex justify-between items-center bg-surfaceLight p-3 rounded-md border border-border">
+                                <div class="flex items-center gap-2 text-[13px] font-medium text-white"><span class="w-1.5 h-1.5 rounded-full bg-success"></span> EHFTV</div>
+                                <button onclick="toast('Session token refreshed','success')" class="text-[11px] font-medium text-textSecondary hover:text-white transition-colors border border-border px-2 py-1 rounded hover:bg-surface">Refresh Token</button>
+                            </div>
+                            <div class="flex justify-between items-center bg-dangerBg p-3 rounded-md border border-danger/30">
+                                <div class="flex items-center gap-2 text-[13px] font-semibold text-danger"><i class="ph-bold ph-warning"></i> IIHF.TV (Expired)</div>
+                                <button onclick="openModal('modal-reauth')" class="text-[11px] font-bold text-white bg-danger hover:bg-red-600 px-3 py-1.5 rounded transition-colors shadow-sm">Reconnect</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Account Card 2 -->
+                    <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <div class="flex justify-between items-start border-b border-borderLight pb-4 mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-surfaceLight flex items-center justify-center text-white font-bold border border-border">TA</div>
+                                <div>
+                                    <div class="text-white font-semibold text-sm">Operator: Tamara</div>
+                                    <div class="text-xs text-textSecondary mt-0.5">2 Active Connections</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center bg-surfaceLight p-3 rounded-md border border-border">
+                                <div class="flex items-center gap-2 text-[13px] font-medium text-white"><span class="w-1.5 h-1.5 rounded-full bg-success"></span> TriathlonLive</div>
+                                <button onclick="toast('Session token refreshed','success')" class="text-[11px] font-medium text-textSecondary hover:text-white transition-colors border border-border px-2 py-1 rounded hover:bg-surface">Refresh Token</button>
+                            </div>
+                            <div class="flex justify-between items-center bg-warningBg p-3 rounded-md border border-warning/30">
+                                <div class="flex items-center gap-2 text-[13px] font-semibold text-warning"><i class="ph-bold ph-warning"></i> Handbollsligan (Expiring)</div>
+                                <button onclick="openModal('modal-reauth')" class="text-[11px] font-bold text-black bg-warning hover:bg-yellow-500 px-3 py-1.5 rounded transition-colors shadow-sm">Renew Now</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: SLACK ALERTS -->
+            <div id="view-slack" class="view-panel hidden p-6 max-w-[1400px] mx-auto pb-24 animate-fade-in">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h1 class="text-xl font-semibold text-white tracking-tight">Slack Alert Management</h1>
+                        <p class="text-xs text-textSecondary mt-1">Configure routing rules, formatting, and view alert history.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-12 gap-6">
+                    <!-- Left: Routing & Channels -->
+                    <div class="col-span-4 space-y-5">
+                        <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                            <h3 class="text-[13px] font-semibold text-white mb-4">Active Channels</h3>
+                            <div class="space-y-2">
+                                <div class="flex justify-between items-center p-3 bg-surfaceLight rounded-md border border-border">
+                                    <div>
+                                        <div class="text-[13px] font-semibold text-white mb-0.5 font-mono">#stream-alerts</div>
+                                        <div class="text-[10px] text-danger">Critical Incidents Only</div>
+                                    </div>
+                                    <div class="text-success text-[10px] font-bold flex items-center gap-1 uppercase tracking-wider"><i class="ph-fill ph-check-circle"></i> Active</div>
+                                </div>
+                                <div class="flex justify-between items-center p-3 bg-surfaceLight rounded-md border border-border">
+                                    <div>
+                                        <div class="text-[13px] font-semibold text-white mb-0.5 font-mono">#ops-support</div>
+                                        <div class="text-[10px] text-warning">Warnings & Auth Issues</div>
+                                    </div>
+                                    <div class="text-success text-[10px] font-bold flex items-center gap-1 uppercase tracking-wider"><i class="ph-fill ph-check-circle"></i> Active</div>
+                                </div>
+                            </div>
+                            <button class="mt-4 text-accent text-xs font-semibold hover:text-accentHover flex items-center gap-1"><i class="ph-bold ph-plus"></i> Add Channel</button>
+                        </div>
+                        
+                        <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                            <h3 class="text-[13px] font-semibold text-white mb-4">Routing Rules</h3>
+                            <div class="space-y-3 text-[13px] text-textSecondary">
+                                <div class="flex items-center gap-3"><span class="w-16 font-semibold text-white">Critical</span> <i class="ph-bold ph-arrow-right text-textMuted"></i> Slack + Email + NOC</div>
+                                <div class="flex items-center gap-3"><span class="w-16 font-semibold text-white">Warning</span> <i class="ph-bold ph-arrow-right text-textMuted"></i> Slack (#ops-support)</div>
+                                <div class="flex items-center gap-3"><span class="w-16 font-semibold text-white">Recovery</span> <i class="ph-bold ph-arrow-right text-textMuted"></i> Reply to Slack Thread</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Preview / Templates -->
+                    <div class="col-span-8 bg-surface border border-border rounded-xl flex flex-col shadow-sm">
+                        <div class="flex border-b border-border px-2 bg-surfaceLight rounded-t-xl">
+                            <button id="btn-slack-critical" onclick="setTab('slack', 'slack-critical')" class="slack-btn px-4 py-3 text-xs font-semibold text-white border-b-2 border-accent transition-colors">Critical</button>
+                            <button id="btn-slack-warning" onclick="setTab('slack', 'slack-warning')" class="slack-btn px-4 py-3 text-xs font-semibold text-textSecondary border-b-2 border-transparent hover:text-white transition-colors">Warning</button>
+                            <button id="btn-slack-recovery" onclick="setTab('slack', 'slack-recovery')" class="slack-btn px-4 py-3 text-xs font-semibold text-textSecondary border-b-2 border-transparent hover:text-white transition-colors">Recovery</button>
+                            <button id="btn-slack-auth" onclick="setTab('slack', 'slack-auth')" class="slack-btn px-4 py-3 text-xs font-semibold text-textSecondary border-b-2 border-transparent hover:text-white transition-colors">Auth Expiry</button>
+                        </div>
+                        
+                        <!-- Tabs Content -->
+                        <div class="p-6 flex-1 bg-surface">
+                            
+                            <!-- Critical Tab -->
+                            <div id="slack-critical" class="slack-tab flex gap-4 animate-fade-in">
+                                <div class="w-9 h-9 rounded bg-accent flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">MB</div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="font-bold text-white text-[13px]">Monitor Bot</span>
+                                        <span class="bg-surfaceLight border border-border text-[9px] font-bold px-1 py-0.5 rounded text-textSecondary tracking-wider">APP</span>
+                                        <span class="text-[11px] text-textMuted">2:24 AM</span>
+                                    </div>
+                                    <div class="text-[13px] text-white mb-2 font-medium">🚨 *CRITICAL INCIDENT DETECTED* | SEV-1 OUTAGE</div>
+                                    <div class="border-l-[3px] border-danger pl-3 mt-2 space-y-2 bg-surfaceLight p-3 rounded-r-md border-y border-r border-border">
+                                        <div class="text-[13px] text-textPrimary leading-relaxed">
+                                            *Stream:* European League 2026 | WOMEN | Slovenia VS Montenegro<br>
+                                            *Platform:* CEV EuroVolley TV<br>
+                                            *Monitored via:* Iva
+                                        </div>
+                                        <div class="text-[13px] text-textPrimary leading-relaxed mt-2 pt-2 border-t border-border">
+                                            *Incident Assessment:* <span class="text-danger bg-dangerBg px-1 rounded text-[11px] font-bold border border-danger/20">VENUE FEED INTERRUPTED</span><br>
+                                            • *Source Feed:* Stopped delivering new content. Stale > 45s.<br>
+                                            • *Viewer Experience:* Playback halted. Player interface frozen.<br>
+                                            • *Audio Check:* Silence detected.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Warning Tab -->
+                            <div id="slack-warning" class="slack-tab hidden flex gap-4 animate-fade-in">
+                                <div class="w-9 h-9 rounded bg-accent flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">MB</div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="font-bold text-white text-[13px]">Monitor Bot</span>
+                                        <span class="bg-surfaceLight border border-border text-[9px] font-bold px-1 py-0.5 rounded text-textSecondary tracking-wider">APP</span>
+                                        <span class="text-[11px] text-textMuted">2:28 AM</span>
+                                    </div>
+                                    <div class="text-[13px] text-white mb-2 font-medium">⚠️ *WARNING: DEGRADED PERFORMANCE*</div>
+                                    <div class="border-l-[3px] border-warning pl-3 mt-2 space-y-2 bg-surfaceLight p-3 rounded-r-md border-y border-r border-border">
+                                        <div class="text-[13px] text-textPrimary leading-relaxed">
+                                            *Stream:* WTS - Yokohama<br>
+                                            *Platform:* TriathlonLive<br>
+                                            *Monitored via:* Tamara
+                                        </div>
+                                        <div class="text-[13px] text-textPrimary leading-relaxed mt-2 pt-2 border-t border-border">
+                                            *Incident Assessment:* <span class="text-warning bg-warningBg px-1 rounded text-[11px] font-bold border border-warning/20">BUFFERING DETECTED</span><br>
+                                            • *Source Feed:* Healthy.<br>
+                                            • *Viewer Experience:* Stalling consistently over last 30s.<br>
+                                            • *Possible Cause:* CDN/Platform issue.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Recovery Tab -->
+                            <div id="slack-recovery" class="slack-tab hidden flex gap-4 animate-fade-in">
+                                <div class="w-9 h-9 rounded bg-accent flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">MB</div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="font-bold text-white text-[13px]">Monitor Bot</span>
+                                        <span class="bg-surfaceLight border border-border text-[9px] font-bold px-1 py-0.5 rounded text-textSecondary tracking-wider">APP</span>
+                                        <span class="text-[11px] text-textMuted">2:32 AM</span>
+                                    </div>
+                                    <div class="text-[13px] text-white mb-2 font-medium">✅ *RESOLVED:* Stream Recovered</div>
+                                    <div class="border-l-[3px] border-success pl-3 mt-2 space-y-2 bg-surfaceLight p-3 rounded-r-md border-y border-r border-border">
+                                        <div class="text-[13px] text-textPrimary leading-relaxed">
+                                            *Incident:* INC-2026-042<br>
+                                            *Downtime:* 8 Minutes, 10 Seconds<br>
+                                            *Status:* Venue feed is actively transmitting again. Viewer playback restored.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Auth Expiry Tab -->
+                            <div id="slack-auth" class="slack-tab hidden flex gap-4 animate-fade-in">
+                                <div class="w-9 h-9 rounded bg-accent flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm">MB</div>
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="font-bold text-white text-[13px]">Monitor Bot</span>
+                                        <span class="bg-surfaceLight border border-border text-[9px] font-bold px-1 py-0.5 rounded text-textSecondary tracking-wider">APP</span>
+                                        <span class="text-[11px] text-textMuted">2:45 AM</span>
+                                    </div>
+                                    <div class="text-[13px] text-white mb-2 font-medium">🔒 *ACTION REQUIRED: AUTHENTICATION*</div>
+                                    <div class="border-l-[3px] border-warning pl-3 mt-2 space-y-2 bg-surfaceLight p-3 rounded-r-md border-y border-r border-border">
+                                        <div class="text-[13px] text-textPrimary leading-relaxed">
+                                            *Platform:* IIHF.TV<br>
+                                            *Account:* Tamara<br>
+                                            *Issue:* Account session expired. Hit a login wall during monitoring. Monitoring paused.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="p-4 border-t border-border bg-surfaceLight flex justify-between items-center rounded-b-xl">
+                            <button class="text-xs text-textSecondary hover:text-white font-semibold transition-colors">View Alert History (Last 100)</button>
+                            <button onclick="openModal('modal-slack-test')" class="bg-bg border border-border text-white px-4 py-1.5 rounded-md text-xs font-semibold hover:bg-surface transition-colors shadow-sm flex items-center gap-2"><i class="ph-bold ph-paper-plane-tilt"></i> Send Test Alert</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- SETTINGS SCREEN -->
+            <!-- ========================================== -->
+            <div id="view-settings" class="view-panel hidden p-6 max-w-[1400px] mx-auto pb-24 h-full animate-fade-in">
+                <div class="mb-6 border-b border-border pb-6">
+                    <h1 class="text-2xl font-semibold text-white tracking-tight">Platform Settings</h1>
+                    <p class="text-[13px] text-textSecondary mt-1">Configure monitoring rules, alerting sensitivity, and integrations.</p>
+                </div>
+
+                <div class="flex gap-8 h-full">
+                    <!-- Left Sidebar Tabs -->
+                    <div class="w-56 shrink-0">
+                        <nav class="space-y-1">
+                            <div class="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 px-3">System</div>
+                            <button id="btn-set-gen" onclick="setTab('set', 'set-gen')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-white bg-surfaceLight rounded-md border border-border flex justify-between items-center shadow-sm transition-colors">General</button>
+                            <button id="btn-set-mon" onclick="setTab('set', 'set-mon')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Monitoring</button>
+                            <button id="btn-set-auth" onclick="setTab('set', 'set-auth')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Authentication</button>
+                            <button id="btn-set-net" onclick="setTab('set', 'set-net')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Network</button>
+                            <button id="btn-set-store" onclick="setTab('set', 'set-store')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Storage</button>
+                            
+                            <div class="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 mt-4 px-3">Alerting</div>
+                            <button id="btn-set-notif" onclick="setTab('set', 'set-notif')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Notifications</button>
+                            <button id="btn-set-rules" onclick="setTab('set', 'set-rules')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Incident Rules</button>
+                            <button id="btn-set-slack" onclick="setTab('set', 'set-slack')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Slack Integration</button>
+
+                            <div class="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2 mt-4 px-3">Admin</div>
+                            <button id="btn-set-adv" onclick="setTab('set', 'set-adv')" class="set-btn w-full text-left px-3 py-2 text-[13px] font-semibold text-textSecondary border border-transparent hover:text-white hover:bg-surfaceLight rounded-md transition-colors flex justify-between items-center">Advanced</button>
+                        </nav>
+                    </div>
+
+                    <!-- Content Panels -->
+                    <div class="flex-1 max-w-3xl">
+                        
+                        <!-- TAB: General -->
+                        <div id="set-gen" class="set-tab space-y-6 animate-fade-in">
+                            <div class="bg-surface border border-border rounded-xl p-6 shadow-sm">
+                                <h3 class="text-[15px] font-semibold text-white mb-5 pb-3 border-b border-border">General Preferences</h3>
+                                <div class="space-y-6">
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">Theme</label>
+                                        <div class="flex gap-3">
+                                            <button class="px-4 py-2 bg-surfaceLight border border-accent text-white text-[13px] font-medium rounded-md shadow-sm">Dark (Default)</button>
+                                            <button class="px-4 py-2 bg-bg border border-border text-textSecondary text-[13px] font-medium rounded-md opacity-50 cursor-not-allowed">Light</button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">Default Dashboard View</label>
+                                        <select class="w-full max-w-sm bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                            <option selected>Grid (Large Thumbnails)</option>
+                                            <option>Compact (Dense)</option>
+                                            <option>List (Table)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">Timezone</label>
+                                        <select class="w-full max-w-sm bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                            <option>UTC</option>
+                                            <option selected>Local Browser Time</option>
+                                            <option>CET (Central European Time)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB: Monitoring -->
+                        <div id="set-mon" class="set-tab hidden space-y-6 animate-fade-in">
+                            <div class="bg-surface border border-border rounded-xl p-6 shadow-sm">
+                                <h3 class="text-[15px] font-semibold text-white mb-5 pb-3 border-b border-border">Monitoring Engine</h3>
+                                <div class="space-y-6">
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">Default Capture Interval</label>
+                                        <p class="text-xs text-textSecondary mb-3">How often screenshots are taken across all streams.</p>
+                                        <select class="w-full max-w-sm bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                            <option>10 seconds</option>
+                                            <option selected>15 seconds</option>
+                                            <option>30 seconds</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center justify-between border-t border-border pt-5">
+                                        <div>
+                                            <div class="text-[13px] font-semibold text-white mb-0.5">Capture Inset Source Feed</div>
+                                            <div class="text-xs text-textSecondary">Overlay the raw broadcast feed thumbnail onto the viewer screenshot.</div>
+                                        </div>
+                                        <label class="relative inline-block w-8 align-middle cursor-pointer">
+                                            <input type="checkbox" checked class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                                            <div class="toggle-label block overflow-hidden h-4 rounded-full bg-border cursor-pointer"></div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- TAB: Network (New) -->
+                        <div id="set-net" class="set-tab hidden space-y-6 animate-fade-in">
+                            <div class="bg-surface border border-border rounded-xl p-6 shadow-sm">
+                                <h3 class="text-[15px] font-semibold text-white mb-5 pb-3 border-b border-border">Network Configuration</h3>
+                                <div class="space-y-6">
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">DNS Resolution Check</label>
+                                        <p class="text-xs text-textSecondary mb-3">Verify platform domain resolves before attempting connection.</p>
+                                        <select class="w-full max-w-sm bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                            <option selected>Enabled (Strict)</option>
+                                            <option>Disabled</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">CDN Latency Timeout</label>
+                                        <p class="text-xs text-textSecondary mb-3">Maximum time to wait for manifest/playlist response.</p>
+                                        <div class="flex gap-3 max-w-sm items-center">
+                                            <input type="number" value="5000" class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                            <span class="text-textSecondary text-xs">ms</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center justify-between border-t border-border pt-5">
+                                        <div>
+                                            <div class="text-[13px] font-semibold text-white mb-0.5">Auto-Retry on 5xx Errors</div>
+                                            <div class="text-xs text-textSecondary">Automatically retry connection if platform returns a server error.</div>
+                                        </div>
+                                        <label class="relative inline-block w-8 align-middle cursor-pointer">
+                                            <input type="checkbox" checked class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                                            <div class="toggle-label block overflow-hidden h-4 rounded-full bg-border cursor-pointer"></div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TAB: Storage (New) -->
+                        <div id="set-store" class="set-tab hidden space-y-6 animate-fade-in">
+                            <div class="bg-surface border border-border rounded-xl p-6 shadow-sm">
+                                <h3 class="text-[15px] font-semibold text-white mb-5 pb-3 border-b border-border">Data Retention</h3>
+                                <div class="space-y-6">
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">Incident History Retention</label>
+                                        <p class="text-xs text-textSecondary mb-3">How long to keep text logs and metadata of resolved incidents.</p>
+                                        <select class="w-full max-w-sm bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                            <option>30 Days</option>
+                                            <option selected>90 Days</option>
+                                            <option>1 Year</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[13px] font-semibold text-white mb-1.5">Evidence Retention (Screenshots)</label>
+                                        <p class="text-xs text-textSecondary mb-3">Images take up significant storage. Set auto-delete policy.</p>
+                                        <select class="w-full max-w-sm bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                            <option>7 Days</option>
+                                            <option selected>14 Days</option>
+                                            <option>30 Days</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center justify-between border-t border-border pt-5">
+                                        <div>
+                                            <div class="text-[13px] font-semibold text-white mb-0.5">Archive to S3</div>
+                                            <div class="text-xs text-textSecondary">Automatically push expired logs to cold storage instead of deleting.</div>
+                                        </div>
+                                        <label class="relative inline-block w-8 align-middle cursor-pointer">
+                                            <input type="checkbox" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                                            <div class="toggle-label block overflow-hidden h-4 rounded-full bg-border cursor-pointer"></div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Add placeholders for the rest to avoid massive file, but keep them functional -->
+                        <div id="set-auth" class="set-tab hidden space-y-6 animate-fade-in"><div class="bg-surface border border-border rounded-xl p-6 shadow-sm"><h3 class="text-[15px] font-semibold text-white">Authentication Settings</h3><p class="text-textSecondary text-[13px] mt-2">Manage session expiry rules and retry logic here.</p></div></div>
+                        <div id="set-notif" class="set-tab hidden space-y-6 animate-fade-in"><div class="bg-surface border border-border rounded-xl p-6 shadow-sm"><h3 class="text-[15px] font-semibold text-white">Notification Channels</h3><p class="text-textSecondary text-[13px] mt-2">Configure email, SMS, and in-app alerts.</p></div></div>
+                        <div id="set-rules" class="set-tab hidden space-y-6 animate-fade-in"><div class="bg-surface border border-border rounded-xl p-6 shadow-sm"><h3 class="text-[15px] font-semibold text-white">Incident Rules</h3><p class="text-textSecondary text-[13px] mt-2">Set hysteresis and thresholds for when warnings escalate to critical.</p></div></div>
+                        <div id="set-slack" class="set-tab hidden space-y-6 animate-fade-in"><div class="bg-surface border border-border rounded-xl p-6 shadow-sm"><h3 class="text-[15px] font-semibold text-white">Slack Config</h3><p class="text-textSecondary text-[13px] mt-2">Go to the dedicated Slack Alerts tab in the sidebar for full management.</p></div></div>
+                        <div id="set-adv" class="set-tab hidden space-y-6 animate-fade-in"><div class="bg-surface border border-danger/30 rounded-xl p-6 shadow-sm"><h3 class="text-[15px] font-semibold text-danger">Advanced Administration</h3><p class="text-textSecondary text-[13px] mt-2">Dangerous settings. Proceed with caution.</p></div></div>
+                        
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- OPS OVERVIEW SCREEN -->
+            <!-- ========================================== -->
+            <div id="view-ops" class="view-panel hidden p-6 max-w-[1400px] mx-auto pb-24 animate-fade-in">
+                <h1 class="text-2xl font-semibold text-white tracking-tight mb-6">Operations Overview</h1>
+                
+                <div class="grid grid-cols-4 gap-4 mb-6">
+                    <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <div class="text-textSecondary text-[10px] font-bold uppercase tracking-widest mb-1.5">Open Incidents</div>
+                        <div class="text-3xl font-mono text-danger tracking-tight">2</div>
+                    </div>
+                    <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <div class="text-textSecondary text-[10px] font-bold uppercase tracking-widest mb-1.5">Mean Time To Detect</div>
+                        <div class="text-3xl font-mono text-white tracking-tight">14s</div>
+                    </div>
+                    <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <div class="text-textSecondary text-[10px] font-bold uppercase tracking-widest mb-1.5">Active Coverage</div>
+                        <div class="text-3xl font-mono text-success tracking-tight">14/15</div>
+                    </div>
+                    <div class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <div class="text-textSecondary text-[10px] font-bold uppercase tracking-widest mb-1.5">Platform Stability (24h)</div>
+                        <div class="text-3xl font-mono text-success tracking-tight">99.8%</div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="bg-surface border border-border rounded-xl p-6 h-80 flex flex-col shadow-sm">
+                        <h3 class="text-[13px] font-semibold text-white mb-5">Platform Stability Ranking</h3>
+                        <div class="flex-1 space-y-5">
+                            <div>
+                                <div class="flex justify-between text-[13px] mb-1.5"><span class="text-white font-medium">TriathlonLive</span><span class="text-textSecondary font-mono">100%</span></div>
+                                <div class="w-full h-1.5 bg-bg rounded-full overflow-hidden"><div class="w-[100%] h-full bg-success"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[13px] mb-1.5"><span class="text-white font-medium">EHFTV</span><span class="text-textSecondary font-mono">99.5%</span></div>
+                                <div class="w-full h-1.5 bg-bg rounded-full overflow-hidden"><div class="w-[99.5%] h-full bg-success"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[13px] mb-1.5"><span class="text-white font-medium">CEV EuroVolley TV</span><span class="text-textSecondary font-mono">98.2%</span></div>
+                                <div class="w-full h-1.5 bg-bg rounded-full overflow-hidden"><div class="w-[98.2%] h-full bg-warning"></div></div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[13px] mb-1.5"><span class="text-white font-medium">Handbollsligan Live</span><span class="text-danger font-mono font-medium">95.0% (Auth drops)</span></div>
+                                <div class="w-full h-1.5 bg-bg rounded-full overflow-hidden"><div class="w-[95%] h-full bg-danger"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-surface border border-border rounded-xl p-6 h-80 flex flex-col shadow-sm">
+                        <h3 class="text-[13px] font-semibold text-white mb-5">Incident Causes (7 Days)</h3>
+                        <div class="flex-1 flex items-end gap-3 pb-2">
+                            <!-- CSS Bar Chart Mockup -->
+                            <div class="flex-1 flex flex-col justify-end items-center group">
+                                <span class="text-[11px] text-textSecondary mb-2 font-mono">42%</span>
+                                <div class="w-full bg-danger rounded-t-sm h-[80%] hover:brightness-110 transition-all"></div>
+                                <span class="text-[10px] text-textSecondary mt-3 text-center leading-tight">Source<br>Offline</span>
+                            </div>
+                            <div class="flex-1 flex flex-col justify-end items-center group">
+                                <span class="text-[11px] text-textSecondary mb-2 font-mono">28%</span>
+                                <div class="w-full bg-warning rounded-t-sm h-[60%] hover:brightness-110 transition-all"></div>
+                                <span class="text-[10px] text-textSecondary mt-3 text-center leading-tight">Auth<br>Expired</span>
+                            </div>
+                            <div class="flex-1 flex flex-col justify-end items-center group">
+                                <span class="text-[11px] text-textSecondary mb-2 font-mono">15%</span>
+                                <div class="w-full bg-accent rounded-t-sm h-[35%] hover:brightness-110 transition-all"></div>
+                                <span class="text-[10px] text-textSecondary mt-3 text-center leading-tight">Platform<br>CDN</span>
+                            </div>
+                            <div class="flex-1 flex flex-col justify-end items-center group">
+                                <span class="text-[11px] text-textSecondary mb-2 font-mono">10%</span>
+                                <div class="w-full bg-info rounded-t-sm h-[25%] hover:brightness-110 transition-all"></div>
+                                <span class="text-[10px] text-textSecondary mt-3 text-center leading-tight">Audio<br>Missing</span>
+                            </div>
+                            <div class="flex-1 flex flex-col justify-end items-center group">
+                                <span class="text-[11px] text-textSecondary mb-2 font-mono">5%</span>
+                                <div class="w-full bg-purple rounded-t-sm h-[15%] hover:brightness-110 transition-all"></div>
+                                <span class="text-[10px] text-textSecondary mt-3 text-center leading-tight">Geo<br>Block</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- REPORTS SCREEN -->
+            <!-- ========================================== -->
+            <div id="view-reports" class="view-panel hidden p-6 max-w-[1400px] mx-auto pb-24 animate-fade-in">
+                <h1 class="text-2xl font-semibold text-white tracking-tight mb-6">Daily Reports</h1>
+                <div class="bg-surface border border-border rounded-xl overflow-hidden shadow-sm">
+                    <div class="flex justify-between items-center p-5 border-b border-border">
+                        <h3 class="text-sm font-semibold text-white">Yesterday's Events (June 5, 2026)</h3>
+                        <button class="text-xs font-semibold text-accent hover:text-white transition-colors flex items-center gap-1.5"><i class="ph-bold ph-download-simple"></i> Export CSV</button>
+                    </div>
+                    <table class="w-full text-left text-[13px]">
+                        <thead class="bg-surfaceLight border-b border-border text-[11px] font-semibold text-textSecondary uppercase tracking-wider">
+                            <tr>
+                                <th class="px-5 py-3">Event</th>
+                                <th class="px-5 py-3">Platform</th>
+                                <th class="px-5 py-3">Duration</th>
+                                <th class="px-5 py-3">Uptime</th>
+                                <th class="px-5 py-3">Incidents</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            <tr class="hover:bg-surfaceHover"><td class="px-5 py-4 font-medium text-white">PSG vs Veszprem</td><td class="px-5 py-4 text-textSecondary">EHFTV</td><td class="px-5 py-4 text-textSecondary font-mono">2h 14m</td><td class="px-5 py-4 text-success font-mono">99.8%</td><td class="px-5 py-4 text-white font-mono">0</td></tr>
+                            <tr class="hover:bg-surfaceHover"><td class="px-5 py-4 font-medium text-white">WTS - Yokohama</td><td class="px-5 py-4 text-textSecondary">TriathlonLive</td><td class="px-5 py-4 text-textSecondary font-mono">4h 05m</td><td class="px-5 py-4 text-success font-mono">100%</td><td class="px-5 py-4 text-white font-mono">0</td></tr>
+                            <tr class="hover:bg-surfaceHover"><td class="px-5 py-4 font-medium text-white">Hammarby vs Ystads IF</td><td class="px-5 py-4 text-textSecondary">Handbollsligan Live</td><td class="px-5 py-4 text-textSecondary font-mono">1h 45m</td><td class="px-5 py-4 text-warning font-mono">94.2%</td><td class="px-5 py-4 text-danger font-bold font-mono">2</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- USER PROFILE SCREEN -->
+            <!-- ========================================== -->
+            <div id="view-profile" class="view-panel hidden p-6 max-w-[1000px] mx-auto pb-24 animate-fade-in">
+                <h1 class="text-2xl font-semibold text-white tracking-tight mb-6">My Profile</h1>
+                <div class="bg-surface border border-border rounded-xl p-8 shadow-sm max-w-2xl">
+                    <div class="flex items-center gap-6 mb-8">
+                        <img src="https://ui-avatars.com/api/?name=Iva+S&background=1C1C1C&color=fff&rounded=true&bold=true&size=80" class="rounded-full border border-border" alt="Profile">
+                        <div>
+                            <div class="text-xl font-bold text-white mb-1">Iva Support</div>
+                            <div class="text-[13px] text-textSecondary mb-3">Shift Coordinator</div>
+                            <span class="badge badge-success"><span class="w-1.5 h-1.5 rounded-full bg-success"></span> Active Shift</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-y-6 gap-x-12">
+                        <div><label class="block text-[11px] font-semibold text-textSecondary uppercase tracking-wider mb-1.5">Email</label><div class="text-[13px] font-medium text-white">iva.support@fandomlabs.tv</div></div>
+                        <div><label class="block text-[11px] font-semibold text-textSecondary uppercase tracking-wider mb-1.5">Slack Handles</label><div class="text-[13px] font-medium text-white">@iva_s</div></div>
+                        <div><label class="block text-[11px] font-semibold text-textSecondary uppercase tracking-wider mb-1.5">Timezone</label><div class="text-[13px] font-medium text-white">Europe/Belgrade (CET)</div></div>
+                        <div><label class="block text-[11px] font-semibold text-textSecondary uppercase tracking-wider mb-1.5">Role Level</label><div class="text-[13px] font-medium text-white">Admin (L3)</div></div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODALS (Hidden by default) -->
+    <!-- ========================================== -->
+    
+    <!-- MODAL: ADD EVENT WIZARD -->
+    <div id="wizard-add-stream" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('wizard-add-stream'); resetWizard()"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-3xl relative z-10 shadow-modal flex flex-col h-[600px] animate-scale-up overflow-hidden">
+            
+            <div class="px-6 py-4 border-b border-border flex justify-between items-center bg-surfaceLight shrink-0">
+                <h2 class="text-base font-semibold text-white">Add Event Monitoring</h2>
+                <button onclick="closeModal('wizard-add-stream'); resetWizard()" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-hidden flex flex-col bg-bg">
+                <!-- Stepper -->
+                <div class="flex items-center justify-center gap-6 py-6 border-b border-border shrink-0 bg-surface" id="wizard-stepper">
+                    <div id="step-ind-1" class="flex flex-col items-center gap-2">
+                        <div class="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold ring-4 ring-accent/20">1</div>
+                        <span class="text-[10px] font-bold text-white uppercase tracking-wider">Platform</span>
+                    </div>
+                    <div class="w-8 h-px bg-border -mt-4"></div>
+                    <div id="step-ind-2" class="flex flex-col items-center gap-2 opacity-50">
+                        <div class="w-6 h-6 rounded-full bg-surfaceLight border border-border text-textSecondary flex items-center justify-center text-xs font-bold">2</div>
+                        <span class="text-[10px] font-bold text-textSecondary uppercase tracking-wider">Event</span>
+                    </div>
+                    <div class="w-8 h-px bg-border -mt-4 opacity-50"></div>
+                    <div id="step-ind-3" class="flex flex-col items-center gap-2 opacity-50">
+                        <div class="w-6 h-6 rounded-full bg-surfaceLight border border-border text-textSecondary flex items-center justify-center text-xs font-bold">3</div>
+                        <span class="text-[10px] font-bold text-textSecondary uppercase tracking-wider">Rules</span>
+                    </div>
+                    <div class="w-8 h-px bg-border -mt-4 opacity-50"></div>
+                    <div id="step-ind-4" class="flex flex-col items-center gap-2 opacity-50">
+                        <div class="w-6 h-6 rounded-full bg-surfaceLight border border-border text-textSecondary flex items-center justify-center text-xs font-bold">4</div>
+                        <span class="text-[10px] font-bold text-textSecondary uppercase tracking-wider">Account</span>
+                    </div>
+                </div>
+
+                <!-- Step 1: Platform -->
+                <div id="wizard-step-1" class="wizard-step p-8 overflow-y-auto flex-1">
+                    <h3 class="text-[15px] font-semibold text-white mb-5">Select Target Platform</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="platform" checked class="peer hidden">
+                            <div class="wizard-card border border-accent bg-accent/10 rounded-xl p-4 flex items-center gap-4 transition-all">
+                                <img src="https://ui-avatars.com/api/?name=CEV&background=0D8ABC&color=fff&rounded=true&size=36" alt="">
+                                <span class="text-[13px] font-semibold text-white">EuroVolley TV</span>
+                                <div class="wizard-check flex absolute top-3 right-3 w-5 h-5 bg-accent rounded-full items-center justify-center text-white"><i class="ph-bold ph-check text-[10px]"></i></div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer">
+                            <input type="radio" name="platform" class="peer hidden">
+                            <div class="wizard-card border border-border bg-surface hover:bg-surfaceLight rounded-xl p-4 flex items-center gap-4 transition-all">
+                                <img src="https://ui-avatars.com/api/?name=EHF&background=fff&color=000&rounded=true&size=36" alt="">
+                                <span class="text-[13px] font-medium text-white">EHFTV</span>
+                                <div class="wizard-check hidden absolute top-3 right-3 w-5 h-5 bg-accent rounded-full items-center justify-center text-white"><i class="ph-bold ph-check text-[10px]"></i></div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Step 2: Event -->
+                <div id="wizard-step-2" class="wizard-step hidden p-8 overflow-y-auto flex-1">
+                    <h3 class="text-[15px] font-semibold text-white mb-5">Select Event</h3>
+                    <div class="relative mb-5">
+                        <i class="ph ph-magnifying-glass absolute left-3 top-3 text-textSecondary"></i>
+                        <input type="text" placeholder="Search scheduled events..." class="w-full bg-surface border border-border text-white text-[13px] rounded-md pl-9 pr-3 py-2.5 outline-none focus:border-accent">
+                    </div>
+                    <div class="space-y-3">
+                        <label class="relative cursor-pointer block">
+                            <input type="radio" name="wevent" checked class="peer hidden">
+                            <div class="wizard-card border border-accent bg-accent/10 rounded-xl p-4 flex justify-between items-center transition-all">
+                                <div><div class="text-[13px] font-semibold text-white mb-0.5">Poland vs Germany</div><div class="text-[11px] text-textSecondary">Women's Golden League</div></div>
+                                <div class="text-[11px] font-mono text-success bg-successBg px-2 py-1 rounded">Starts in 2h</div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer block">
+                            <input type="radio" name="wevent" class="peer hidden">
+                            <div class="wizard-card border border-border bg-surface hover:bg-surfaceLight rounded-xl p-4 flex justify-between items-center transition-all">
+                                <div><div class="text-[13px] font-medium text-white mb-0.5">Spain vs Belgium</div><div class="text-[11px] text-textSecondary">Men's Silver League</div></div>
+                                <div class="text-[11px] font-mono text-textSecondary">Tomorrow 18:00</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Step 3: Rules -->
+                <div id="wizard-step-3" class="wizard-step hidden p-8 overflow-y-auto flex-1">
+                    <h3 class="text-[15px] font-semibold text-white mb-5">Monitoring Rules</h3>
+                    <div class="space-y-6 max-w-md">
+                        <div>
+                            <label class="block text-[13px] font-medium text-textSecondary mb-2">Monitoring Profile</label>
+                            <select class="w-full bg-surface border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent">
+                                <option>Standard</option>
+                                <option selected>High Priority Event</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[13px] font-medium text-textSecondary mb-2">Visual Capture Rate</label>
+                            <select class="w-full bg-surface border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent">
+                                <option>Every 10 seconds</option>
+                                <option selected>Every 15 seconds</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Account -->
+                <div id="wizard-step-4" class="wizard-step hidden p-8 overflow-y-auto flex-1">
+                    <h3 class="text-[15px] font-semibold text-white mb-5">Assign Monitoring Account</h3>
+                    <div class="space-y-3">
+                        <label class="relative cursor-pointer block">
+                            <input type="radio" name="account" checked class="peer hidden">
+                            <div class="wizard-card border border-accent bg-accent/10 rounded-xl p-4 flex justify-between items-center transition-all">
+                                <div><div class="text-[13px] font-semibold text-white mb-0.5">Operator: Iva</div><div class="text-[11px] text-textSecondary">Capacity: 3/5 Streams · Healthy</div></div>
+                                <div class="wizard-check flex w-5 h-5 bg-accent rounded-full items-center justify-center text-white"><i class="ph-bold ph-check text-[10px]"></i></div>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer block">
+                            <input type="radio" name="account" class="peer hidden">
+                            <div class="wizard-card border border-border bg-surface hover:bg-surfaceLight rounded-xl p-4 flex justify-between items-center transition-all">
+                                <div><div class="text-[13px] font-medium text-white mb-0.5">Operator: Tamara</div><div class="text-[11px] text-textSecondary">Capacity: 2/5 Streams</div></div>
+                                <div class="wizard-check hidden w-5 h-5 bg-accent rounded-full items-center justify-center text-white"><i class="ph-bold ph-check text-[10px]"></i></div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+            
+            <div class="px-6 py-4 border-t border-border bg-surface flex justify-between items-center shrink-0 rounded-b-xl">
+                <button onclick="closeModal('wizard-add-stream'); resetWizard()" class="text-[13px] text-textSecondary hover:text-white font-medium transition-colors">Cancel</button>
+                <button id="wizard-next-btn" onclick="nextWizardStep()" class="px-6 py-2.5 bg-white text-black rounded-md text-[13px] font-semibold hover:bg-gray-200 transition-colors shadow-lg flex items-center gap-2">Next Step <i class="ph-bold ph-arrow-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD ACCOUNT -->
+    <div id="modal-add-account" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('modal-add-account')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-md relative z-10 shadow-modal flex flex-col animate-scale-up">
+            <div class="px-6 py-4 border-b border-border flex justify-between items-center bg-surfaceLight rounded-t-xl">
+                <h2 class="text-base font-semibold text-white">Add Monitoring Account</h2>
+                <button onclick="closeModal('modal-add-account')" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div class="bg-infoBg/30 border border-info/20 rounded-lg p-3 flex gap-3 text-info">
+                    <i class="ph-fill ph-info mt-0.5"></i>
+                    <p class="text-[11px] leading-relaxed">This account is used only to log into the platform and watch the stream. Credentials are stored securely.</p>
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Platform</label>
+                    <select class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent">
+                        <option>CEV EuroVolley TV</option>
+                        <option>EHFTV</option>
+                        <option>IIHF.TV</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Operator Assignment</label>
+                    <select class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent">
+                        <option>Iva</option>
+                        <option>Tamara</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Login Email</label>
+                    <input type="text" placeholder="monitor@domain.com" class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent placeholder-borderLight">
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Password</label>
+                    <input type="password" placeholder="••••••••" class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent placeholder-borderLight">
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-border bg-surfaceLight flex justify-end gap-3 rounded-b-xl">
+                <button onclick="closeModal('modal-add-account')" class="px-4 py-2 bg-transparent text-textSecondary rounded text-[13px] font-medium hover:text-white transition-colors">Cancel</button>
+                <button onclick="submitModal('modal-add-account','Account added successfully','success')" class="px-5 py-2 bg-accent text-white rounded text-[13px] font-semibold hover:bg-accentHover transition-colors shadow-lg">Save Account</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: PAUSE MONITORING -->
+    <div id="modal-pause-monitoring" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('modal-pause-monitoring')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-sm relative z-10 shadow-modal flex flex-col animate-scale-up">
+            <div class="p-6 text-center space-y-4">
+                <div class="w-12 h-12 rounded-full bg-warningBg text-warning flex items-center justify-center border border-warning/20 mx-auto"><i class="ph-fill ph-pause-circle text-xl"></i></div>
+                <div>
+                    <h2 class="text-base font-semibold text-white">Pause Monitoring?</h2>
+                    <p class="text-[13px] text-textSecondary mt-2 leading-relaxed">You will stop receiving alerts for this stream. The monitoring engine will disconnect.</p>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-border bg-surfaceLight rounded-b-xl flex gap-3">
+                <button onclick="closeModal('modal-pause-monitoring')" class="flex-1 px-4 py-2 bg-surface border border-border text-textSecondary hover:text-white rounded text-[13px] font-medium transition-colors">Cancel</button>
+                <button onclick="submitModal('modal-pause-monitoring','Monitoring paused','warning')" class="flex-1 px-4 py-2 bg-warning text-black rounded text-[13px] font-semibold hover:bg-yellow-500 transition-colors shadow-lg">Pause</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: REMOVE EVENT -->
+    <div id="modal-remove-event" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('modal-remove-event')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-sm relative z-10 shadow-modal flex flex-col animate-scale-up">
+            <div class="p-6 text-center space-y-4">
+                <div class="w-12 h-12 rounded-full bg-dangerBg text-danger flex items-center justify-center border border-danger/20 mx-auto"><i class="ph-fill ph-trash text-xl"></i></div>
+                <div>
+                    <h2 class="text-base font-semibold text-white">Remove Event?</h2>
+                    <p class="text-[13px] text-textSecondary mt-2 leading-relaxed">This will permanently remove the stream from the dashboard and archive its incident logs.</p>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-border bg-surfaceLight rounded-b-xl flex gap-3">
+                <button onclick="closeModal('modal-remove-event')" class="flex-1 px-4 py-2 bg-surface border border-border text-textSecondary hover:text-white rounded text-[13px] font-medium transition-colors">Cancel</button>
+                <button onclick="submitModal('modal-remove-event','Event removed','danger')" class="flex-1 px-4 py-2 bg-danger text-white rounded text-[13px] font-semibold hover:bg-red-600 transition-colors shadow-lg">Remove</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ========================================== -->
+    <!-- MODAL: ESCALATE TO NOC -->
+    <!-- ========================================== -->
+    <div id="modal-escalate" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('modal-escalate')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-4xl relative z-10 shadow-modal flex flex-col max-h-[90vh] animate-scale-up">
+            <div class="px-6 py-4 border-b border-border flex justify-between items-center bg-surfaceLight rounded-t-xl shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-md bg-dangerBg text-danger flex items-center justify-center border border-danger/20"><i class="ph-fill ph-siren"></i></div>
+                    <div>
+                        <h2 class="text-base font-semibold text-white">Escalate to NOC</h2>
+                        <p class="text-[11px] text-textSecondary">INC-2026-042 · CEV EuroVolley TV</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-escalate')" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto flex flex-col lg:flex-row min-h-0">
+                <!-- Left: escalation summary -->
+                <div class="flex-1 p-6 space-y-5 border-r border-border">
+                    <div>
+                        <div class="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-2">Escalation Summary</div>
+                        <div class="bg-bg border border-border rounded-lg p-4 font-mono text-[11px] text-textSecondary leading-relaxed space-y-3">
+                            <p class="text-danger font-bold">CRITICAL · BROADCAST INTERRUPTION</p>
+                            <div><span class="text-white">Event:</span> Slovenia vs Montenegro — Quarterfinal</div>
+                            <div><span class="text-white">Platform:</span> CEV EuroVolley TV</div>
+                            <div><span class="text-white">What customers see:</span> Playback frozen across all monitored viewers.</div>
+                            <div><span class="text-white">Likely cause:</span> Venue contribution feed stopped transmitting (upstream of platform delivery).</div>
+                            <div><span class="text-white">Recommended action:</span> Investigate broadcast contribution feed. Do not troubleshoot the OTT front-end.</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[13px] font-medium text-textSecondary mb-2">Priority</label>
+                            <div class="flex items-center bg-bg border border-border rounded-md p-0.5 text-[11px]">
+                                <button class="flex-1 px-2 py-1.5 rounded text-textSecondary hover:text-white transition-colors">P3</button>
+                                <button class="flex-1 px-2 py-1.5 rounded text-textSecondary hover:text-white transition-colors">P2</button>
+                                <button class="flex-1 px-2 py-1.5 rounded bg-danger text-white font-semibold">P1</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[13px] font-medium text-textSecondary mb-2">Destination</label>
+                            <select class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2 outline-none focus:border-accent">
+                                <option>#noc-bridge (Slack)</option>
+                                <option>NOC On-call (PagerDuty)</option>
+                                <option>Broadcast Engineering</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[13px] font-medium text-textSecondary mb-2">Operator notes <span class="text-textMuted font-normal">(optional)</span></label>
+                        <textarea class="w-full bg-bg border border-border rounded-lg p-3 text-[13px] text-white outline-none focus:border-accent placeholder-borderLight resize-none h-20" placeholder="e.g. Posted holding slate to viewers, awaiting venue confirmation…"></textarea>
+                    </div>
+                </div>
+
+                <!-- Right: screenshot evidence -->
+                <div class="w-full lg:w-80 shrink-0 p-6 bg-bg/40">
+                    <div class="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-3 flex justify-between items-center">Screenshot Evidence <span class="font-mono normal-case text-[10px] text-textSecondary">3 captured</span></div>
+                    <div class="space-y-3">
+                        <div class="rounded-lg border border-border overflow-hidden">
+                            <div class="relative bg-black h-24 flex items-center justify-center">
+                                <img src="https://images.unsplash.com/photo-1593341646782-e0b495cff86d?auto=format&fit=crop&w=400&q=80" class="w-full h-full object-cover opacity-25 grayscale" alt="">
+                                <span class="absolute text-[10px] font-semibold text-white bg-black/70 px-2 py-0.5 rounded">Playback frozen</span>
+                                <span class="absolute bottom-1 right-1 text-[9px] font-mono text-white bg-black/80 px-1.5 py-0.5 rounded">19:42:08</span>
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-border overflow-hidden">
+                            <div class="relative h-24 flex">
+                                <div class="flex-1 bg-gray-300"></div><div class="flex-1 bg-yellow-400"></div><div class="flex-1 bg-cyan-400"></div><div class="flex-1 bg-green-500"></div><div class="flex-1 bg-fuchsia-500"></div><div class="flex-1 bg-red-500"></div><div class="flex-1 bg-blue-600"></div>
+                                <span class="absolute bottom-1 right-1 text-[9px] font-mono text-white bg-black/80 px-1.5 py-0.5 rounded">19:42:31 · Source offline</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center gap-2 text-[11px] text-textSecondary"><i class="ph-fill ph-check-circle text-success"></i> Timeline &amp; logs attached</div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-border bg-surfaceLight rounded-b-xl flex justify-between items-center shrink-0">
+                <button class="text-[12px] text-textSecondary hover:text-white flex items-center gap-1.5 transition-colors"><i class="ph-bold ph-download-simple"></i> Download report</button>
+                <div class="flex gap-3">
+                    <button onclick="closeModal('modal-escalate')" class="px-4 py-2 bg-transparent text-textSecondary rounded text-[13px] font-medium hover:text-white transition-colors">Cancel</button>
+                    <button onclick="submitModal('modal-escalate','Escalated to NOC · P1','danger')" class="px-5 py-2 bg-danger text-white rounded text-[13px] font-semibold hover:bg-red-600 transition-colors shadow-lg flex items-center gap-2"><i class="ph-fill ph-paper-plane-tilt"></i> Send to NOC</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: COPY SUMMARY -->
+    <!-- ========================================== -->
+    <div id="modal-copy-summary" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('modal-copy-summary')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-3xl relative z-10 shadow-modal flex flex-col max-h-[90vh] animate-scale-up">
+            <div class="px-6 py-4 border-b border-border flex justify-between items-center bg-surfaceLight rounded-t-xl shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-md bg-surfaceLight text-white flex items-center justify-center border border-border"><i class="ph-bold ph-copy"></i></div>
+                    <h2 class="text-base font-semibold text-white">Copy Incident Summary</h2>
+                </div>
+                <button onclick="closeModal('modal-copy-summary')" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto flex flex-col lg:flex-row min-h-0">
+                <div class="flex-1 p-6">
+                    <div class="bg-bg border border-border rounded-lg p-4 font-mono text-[11px] text-textSecondary leading-relaxed space-y-1.5">
+                        <div><span class="text-white">Incident:</span> INC-2026-042</div>
+                        <div><span class="text-white">Event:</span> Slovenia vs Montenegro — Quarterfinal</div>
+                        <div><span class="text-white">Platform:</span> CEV EuroVolley TV</div>
+                        <div><span class="text-white">Severity:</span> <span class="text-danger">Critical</span></div>
+                        <div><span class="text-white">Detected:</span> 19:42 CET (auto)</div>
+                        <div><span class="text-white">Likely cause:</span> Venue feed interrupted</div>
+                        <div class="pt-2"><span class="text-white">Timeline:</span></div>
+                        <div class="pl-3">19:42 — Playback frozen detected</div>
+                        <div class="pl-3">19:43 — Operator Iva acknowledged</div>
+                        <div class="pl-3">19:45 — NOC contacted via #noc-bridge</div>
+                        <div class="pt-2"><span class="text-white">Current status:</span> <span class="text-warning">Investigating</span></div>
+                    </div>
+                    <button onclick="toast('Summary copied to clipboard','success')" class="mt-4 w-full bg-accent text-white rounded-md py-2.5 text-[13px] font-semibold hover:bg-accentHover transition-colors shadow-lg flex items-center justify-center gap-2"><i class="ph-bold ph-copy"></i> Copy to clipboard</button>
+                </div>
+                <div class="w-full lg:w-72 shrink-0 p-6 bg-bg/40 border-l border-border">
+                    <div class="text-[10px] font-bold text-textMuted uppercase tracking-wider mb-3">Attached Screenshot</div>
+                    <div class="rounded-lg border border-border overflow-hidden">
+                        <div class="relative bg-black h-32 flex items-center justify-center">
+                            <img src="https://images.unsplash.com/photo-1593341646782-e0b495cff86d?auto=format&fit=crop&w=400&q=80" class="w-full h-full object-cover opacity-25 grayscale" alt="">
+                            <span class="absolute text-[10px] font-semibold text-white bg-black/70 px-2 py-0.5 rounded">Playback frozen</span>
+                            <span class="absolute bottom-1 right-1 text-[9px] font-mono text-white bg-black/80 px-1.5 py-0.5 rounded">19:42:08</span>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-textSecondary mt-3 leading-relaxed">The most recent capture is included with the copied summary.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: TEST SLACK ALERT -->
+    <!-- ========================================== -->
+    <div id="modal-slack-test" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('modal-slack-test')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-md relative z-10 shadow-modal flex flex-col animate-scale-up">
+            <div class="px-6 py-4 border-b border-border flex justify-between items-center bg-surfaceLight rounded-t-xl">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-md bg-purpleBg text-purple flex items-center justify-center border border-purple/20"><i class="ph-fill ph-slack-logo"></i></div>
+                    <h2 class="text-base font-semibold text-white">Send Test Alert</h2>
+                </div>
+                <button onclick="closeModal('modal-slack-test')" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Channel</label>
+                    <select class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent font-mono">
+                        <option>#ott-live-stream-alerts</option>
+                        <option>#ext-iihf-ops</option>
+                        <option>#noc-bridge</option>
+                        <option>#ott-warnings</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Template</label>
+                    <select class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent">
+                        <option>Critical outage</option>
+                        <option>Warning</option>
+                        <option>Recovery</option>
+                        <option>Auth expiry</option>
+                    </select>
+                </div>
+                <div class="bg-infoBg/30 border border-info/20 rounded-lg p-3 flex gap-3 text-info">
+                    <i class="ph-fill ph-info mt-0.5"></i>
+                    <p class="text-[11px] leading-relaxed">A message clearly tagged <span class="text-white font-semibold">[TEST]</span> will be posted so the team knows it is not a real incident.</p>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-border bg-surfaceLight flex justify-end gap-3 rounded-b-xl">
+                <button onclick="closeModal('modal-slack-test')" class="px-4 py-2 bg-transparent text-textSecondary rounded text-[13px] font-medium hover:text-white transition-colors">Cancel</button>
+                <button onclick="submitModal('modal-slack-test','Test alert sent to Slack','success')" class="px-5 py-2 bg-purple text-white rounded text-[13px] font-semibold hover:bg-violet-600 transition-colors shadow-lg flex items-center gap-2"><i class="ph-fill ph-paper-plane-tilt"></i> Send Test</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: RE-AUTHENTICATE ACCOUNT -->
+    <!-- ========================================== -->
+    <div id="modal-reauth" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('modal-reauth')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-md relative z-10 shadow-modal flex flex-col animate-scale-up">
+            <div class="px-6 py-4 border-b border-border flex justify-between items-center bg-surfaceLight rounded-t-xl">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-md bg-warningBg text-warning flex items-center justify-center border border-warning/20"><i class="ph-fill ph-key"></i></div>
+                    <div>
+                        <h2 class="text-base font-semibold text-white">Reconnect Account</h2>
+                        <p class="text-[11px] text-textSecondary">IIHF.TV · Operator Iva</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('modal-reauth')" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div class="bg-warningBg/40 border border-warning/20 rounded-lg p-3 flex gap-3 text-warning">
+                    <i class="ph-fill ph-warning mt-0.5"></i>
+                    <p class="text-[11px] leading-relaxed">The login session expired. Monitoring is paused for this stream until you reconnect.</p>
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Login Email</label>
+                    <input type="text" value="iihf-monitor-03@fandomlabs.tv" disabled class="w-full bg-bg/50 border border-border text-textSecondary text-[13px] rounded-md px-3 py-2.5 outline-none">
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Password</label>
+                    <input type="password" placeholder="Re-enter password" class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent placeholder-borderLight">
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-border bg-surfaceLight flex justify-end gap-3 rounded-b-xl">
+                <button onclick="closeModal('modal-reauth')" class="px-4 py-2 bg-transparent text-textSecondary rounded text-[13px] font-medium hover:text-white transition-colors">Cancel</button>
+                <button onclick="submitModal('modal-reauth','Account reconnected · monitoring resumed','success')" class="px-5 py-2 bg-warning text-black rounded text-[13px] font-semibold hover:bg-yellow-500 transition-colors shadow-lg flex items-center gap-2"><i class="ph-fill ph-key"></i> Reconnect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- WIZARD: ADD ACCOUNT (monitoring profile) -->
+    <!-- ========================================== -->
+    <div id="wizard-add-auth" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-overlay" onclick="closeModal('wizard-add-auth')"></div>
+        <div class="bg-surface border border-border rounded-xl w-full max-w-lg relative z-10 shadow-modal flex flex-col animate-scale-up">
+            <div class="px-6 py-4 border-b border-border flex justify-between items-center bg-surfaceLight rounded-t-xl">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-md bg-accent/10 text-accent flex items-center justify-center border border-accent/20"><i class="ph-bold ph-identification-card"></i></div>
+                    <h2 class="text-base font-semibold text-white">Add Monitoring Account</h2>
+                </div>
+                <button onclick="closeModal('wizard-add-auth')" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+            <div class="p-6 space-y-5">
+                <div class="bg-infoBg/30 border border-info/20 rounded-lg p-3 flex gap-3 text-info">
+                    <i class="ph-fill ph-info mt-0.5"></i>
+                    <p class="text-[11px] leading-relaxed">A monitoring account is a viewer login used only to watch and verify the stream. It is never shared between platforms.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[13px] font-medium text-textSecondary mb-2">Platform</label>
+                        <select class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent">
+                            <option>CEV EuroVolley TV</option>
+                            <option>EHFTV</option>
+                            <option>IIHF.TV</option>
+                            <option>TriathlonLive</option>
+                            <option>Handbollsligan Live</option>
+                            <option>HapoelTV</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[13px] font-medium text-textSecondary mb-2">Assign to</label>
+                        <select class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent">
+                            <option>Iva</option><option>Tamara</option><option>Jana</option><option>Luka</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Login Email</label>
+                    <input type="text" placeholder="monitor@fandomlabs.tv" class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent placeholder-borderLight">
+                </div>
+                <div>
+                    <label class="block text-[13px] font-medium text-textSecondary mb-2">Password</label>
+                    <input type="password" placeholder="••••••••" class="w-full bg-bg border border-border text-white text-[13px] rounded-md px-3 py-2.5 outline-none focus:border-accent placeholder-borderLight">
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-border bg-surfaceLight flex justify-end gap-3 rounded-b-xl">
+                <button onclick="closeModal('wizard-add-auth')" class="px-4 py-2 bg-transparent text-textSecondary rounded text-[13px] font-medium hover:text-white transition-colors">Cancel</button>
+                <button onclick="submitModal('wizard-add-auth','Account added &amp; verified','success')" class="px-5 py-2 bg-accent text-white rounded text-[13px] font-semibold hover:bg-accentHover transition-colors shadow-lg flex items-center gap-2"><i class="ph-bold ph-check"></i> Add &amp; Verify</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- DRAWER: NOTIFICATION CENTER -->
+    <!-- ========================================== -->
+    <div id="drawer-notifications" class="hidden fixed inset-0 z-50">
+        <div class="absolute inset-0 modal-overlay" onclick="toggleDrawer('drawer-notifications')"></div>
+        <div class="absolute top-0 right-0 h-full w-full max-w-sm bg-surface border-l border-border shadow-modal flex flex-col animate-slide-in">
+            <div class="px-5 py-4 border-b border-border flex justify-between items-center bg-surfaceLight shrink-0">
+                <div class="flex items-center gap-2">
+                    <i class="ph-fill ph-bell text-accent"></i>
+                    <h2 class="text-sm font-semibold text-white">Notifications</h2>
+                    <span class="badge badge-danger px-1.5 py-0.5 text-[9px]">4 new</span>
+                </div>
+                <button onclick="toggleDrawer('drawer-notifications')" class="text-textSecondary hover:text-white"><i class="ph-bold ph-x text-lg"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto hide-scrollbar">
+                <button onclick="toggleDrawer('drawer-notifications'); navTo('view-incident-detail')" class="w-full text-left px-5 py-3.5 border-b border-border hover:bg-surfaceLight transition-colors flex gap-3">
+                    <div class="w-7 h-7 rounded-md bg-dangerBg text-danger flex items-center justify-center shrink-0 mt-0.5"><i class="ph-fill ph-warning-octagon text-sm"></i></div>
+                    <div class="min-w-0">
+                        <div class="text-[13px] text-white font-medium">Feed issue detected</div>
+                        <div class="text-[11px] text-textSecondary mt-0.5 leading-snug">Slovenia vs Montenegro · CEV EuroVolley TV — playback frozen.</div>
+                        <div class="text-[10px] text-textMuted mt-1 font-mono">2 min ago</div>
+                    </div>
+                </button>
+                <button onclick="toggleDrawer('drawer-notifications'); navTo('view-dashboard')" class="w-full text-left px-5 py-3.5 border-b border-border hover:bg-surfaceLight transition-colors flex gap-3">
+                    <div class="w-7 h-7 rounded-md bg-warningBg text-warning flex items-center justify-center shrink-0 mt-0.5"><i class="ph-fill ph-user-minus text-sm"></i></div>
+                    <div class="min-w-0">
+                        <div class="text-[13px] text-white font-medium">Coverage missing</div>
+                        <div class="text-[11px] text-textSecondary mt-0.5 leading-snug">WTS — Yokohama has no assigned monitor.</div>
+                        <div class="text-[10px] text-textMuted mt-1 font-mono">11 min ago</div>
+                    </div>
+                </button>
+                <button onclick="toggleDrawer('drawer-notifications'); navTo('view-auth')" class="w-full text-left px-5 py-3.5 border-b border-border hover:bg-surfaceLight transition-colors flex gap-3">
+                    <div class="w-7 h-7 rounded-md bg-warningBg text-warning flex items-center justify-center shrink-0 mt-0.5"><i class="ph-fill ph-key text-sm"></i></div>
+                    <div class="min-w-0">
+                        <div class="text-[13px] text-white font-medium">Login required</div>
+                        <div class="text-[11px] text-textSecondary mt-0.5 leading-snug">IIHF.TV session expired — reconnect to resume monitoring.</div>
+                        <div class="text-[10px] text-textMuted mt-1 font-mono">24 min ago</div>
+                    </div>
+                </button>
+                <button onclick="toggleDrawer('drawer-notifications'); navTo('view-dashboard')" class="w-full text-left px-5 py-3.5 border-b border-border hover:bg-surfaceLight transition-colors flex gap-3">
+                    <div class="w-7 h-7 rounded-md bg-infoBg text-info flex items-center justify-center shrink-0 mt-0.5"><i class="ph-fill ph-clock text-sm"></i></div>
+                    <div class="min-w-0">
+                        <div class="text-[13px] text-white font-medium">Event starting soon</div>
+                        <div class="text-[11px] text-textSecondary mt-0.5 leading-snug">Albania vs Romania starts in 30 minutes.</div>
+                        <div class="text-[10px] text-textMuted mt-1 font-mono">30 min ago</div>
+                    </div>
+                </button>
+                <div class="px-5 py-2 bg-bg/40 text-[10px] font-bold text-textMuted uppercase tracking-wider">Earlier</div>
+                <div class="w-full text-left px-5 py-3.5 border-b border-border flex gap-3 opacity-70">
+                    <div class="w-7 h-7 rounded-md bg-warningBg text-warning flex items-center justify-center shrink-0 mt-0.5"><i class="ph-fill ph-pause-circle text-sm"></i></div>
+                    <div class="min-w-0">
+                        <div class="text-[13px] text-white font-medium">Monitoring paused</div>
+                        <div class="text-[11px] text-textSecondary mt-0.5 leading-snug">Buffalo vs Toronto paused by Jana.</div>
+                        <div class="text-[10px] text-textMuted mt-1 font-mono">1 hr ago</div>
+                    </div>
+                </div>
+                <div class="w-full text-left px-5 py-3.5 border-b border-border flex gap-3 opacity-70">
+                    <div class="w-7 h-7 rounded-md bg-successBg text-success flex items-center justify-center shrink-0 mt-0.5"><i class="ph-fill ph-check-circle text-sm"></i></div>
+                    <div class="min-w-0">
+                        <div class="text-[13px] text-white font-medium">Incident resolved</div>
+                        <div class="text-[11px] text-textSecondary mt-0.5 leading-snug">Kiel vs Barcelona recovered — feed stable.</div>
+                        <div class="text-[10px] text-textMuted mt-1 font-mono">2 hr ago</div>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-3 border-t border-border bg-surfaceLight flex justify-between items-center shrink-0">
+                <button onclick="toast('All notifications marked read','info')" class="text-[12px] text-textSecondary hover:text-white font-medium transition-colors">Mark all read</button>
+                <button onclick="toggleDrawer('drawer-notifications'); navTo('view-ops')" class="text-[12px] text-accent hover:text-white font-medium transition-colors flex items-center gap-1">View all <i class="ph-bold ph-arrow-right text-[10px]"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Sidebar Logic ---
+        let sidebarCollapsed = false;
+        function toggleSidebar() {
+            sidebarCollapsed = !sidebarCollapsed;
+            const sidebar = document.getElementById('main-sidebar');
+            if (sidebarCollapsed) {
+                sidebar.classList.add('sidebar-collapsed');
+            } else {
+                sidebar.classList.remove('sidebar-collapsed');
+            }
+        }
+
+        // --- View Router ---
+        const views = [
+            'view-dashboard', 'view-incidents', 'view-incident-detail', 
+            'view-auth', 'view-slack', 'view-settings', 'view-ops', 'view-reports',
+            'view-profile'
+        ];
+
+        const navHighlightFor = { 'view-incident-detail': 'view-incidents' };
+
+        function navTo(targetId) {
+            views.forEach(v => {
+                const el = document.getElementById(v);
+                if(el) { el.classList.add('hidden'); el.classList.remove('block'); }
+            });
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-surfaceLight', 'text-white', 'shadow-sm', 'border-border', 'border');
+                btn.classList.add('text-textSecondary');
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('text-accent', 'text-danger', 'text-warning', 'text-purple');
+                    if (btn.id === 'nav-view-incidents') icon.classList.add('group-hover:text-danger');
+                    if (btn.id === 'nav-view-auth') icon.classList.add('group-hover:text-warning');
+                }
+            });
+
+            const targetEl = document.getElementById(targetId);
+            if(targetEl) { targetEl.classList.remove('hidden'); targetEl.classList.add('block'); }
+
+            const highlightId = navHighlightFor[targetId] || targetId;
+            const btnEl = document.getElementById('nav-' + highlightId);
+            if(btnEl) {
+                btnEl.classList.remove('text-textSecondary');
+                btnEl.classList.add('bg-surfaceLight', 'text-white', 'shadow-sm', 'border-border', 'border');
+                const icon = btnEl.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('group-hover:text-danger', 'group-hover:text-warning');
+                    if (highlightId === 'view-incidents') icon.classList.add('text-danger');
+                    else if (highlightId === 'view-auth') icon.classList.add('text-warning');
+                    else icon.classList.add('text-accent');
+                }
+            }
+            
+            closeDropdowns();
+            const mainContent = document.getElementById('main-content');
+            if (mainContent) mainContent.scrollTop = 0;
+        }
+
+        // --- Layout Toggles ---
+        function setDashboardLayout(layout) {
+            const container = document.getElementById('dashboard-container');
+            const btns = ['layout-grid', 'layout-compact', 'layout-list'];
+            
+            btns.forEach(b => {
+                const el = document.getElementById(b);
+                el.classList.remove('bg-surfaceLight', 'text-white', 'border-borderLight', 'shadow-sm');
+                el.classList.add('text-textSecondary', 'border-transparent');
+            });
+
+            const activeBtn = document.getElementById('layout-' + layout);
+            activeBtn.classList.remove('text-textSecondary', 'border-transparent');
+            activeBtn.classList.add('bg-surfaceLight', 'text-white', 'border-borderLight', 'shadow-sm');
+
+            container.className = 'layout-' + layout;
+        }
+
+        // --- Generic Tab Switcher ---
+        function setTab(group, tabId) {
+            document.querySelectorAll('.' + group + '-tab').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.' + group + '-btn, .' + group + '-nav').forEach(el => {
+                if(group === 'set') {
+                    el.classList.remove('bg-surfaceLight', 'text-white', 'shadow-sm', 'border-border');
+                    el.classList.add('text-textSecondary', 'border-transparent');
+                } else if(group === 'inc') {
+                    el.classList.remove('bg-surfaceLight', 'border-borderLight', 'text-white', 'shadow-sm');
+                    el.classList.add('border-transparent', 'text-textSecondary');
+                } else if(group === 'slack') {
+                    el.classList.remove('border-accent', 'text-white');
+                    el.classList.add('border-transparent', 'text-textSecondary');
+                }
+            });
+            
+            document.getElementById(tabId).classList.remove('hidden');
+            const btn = document.getElementById('btn-' + tabId) || document.getElementById(tabId.replace('panel', 'nav'));
+            if(btn) {
+                if(group === 'set') {
+                    btn.classList.remove('text-textSecondary', 'border-transparent');
+                    btn.classList.add('bg-surfaceLight', 'text-white', 'shadow-sm', 'border-border');
+                } else if(group === 'inc') {
+                    btn.classList.remove('border-transparent', 'text-textSecondary');
+                    btn.classList.add('bg-surfaceLight', 'border-borderLight', 'text-white', 'shadow-sm');
+                } else if(group === 'slack') {
+                    btn.classList.remove('border-transparent', 'text-textSecondary');
+                    btn.classList.add('border-accent', 'text-white');
+                }
+            }
+        }
+
+        // --- Wizard Logic ---
+        let currentWizardStep = 1;
+        function nextWizardStep() {
+            if(currentWizardStep < 4) { // Only 4 steps actually active in UI
+                document.getElementById('wizard-step-' + currentWizardStep).classList.add('hidden');
+                
+                let ind = document.getElementById('step-ind-' + currentWizardStep);
+                let circle = ind.querySelector('div');
+                circle.className = 'w-6 h-6 rounded-full bg-success text-white flex items-center justify-center text-xs font-bold';
+                circle.innerHTML = '<i class="ph-bold ph-check text-[10px]"></i>';
+
+                currentWizardStep++;
+                
+                if (document.getElementById('wizard-step-' + currentWizardStep)) {
+                    document.getElementById('wizard-step-' + currentWizardStep).classList.remove('hidden');
+                }
+                
+                let nextInd = document.getElementById('step-ind-' + currentWizardStep);
+                if (nextInd) {
+                    nextInd.classList.remove('opacity-50');
+                    let nextCircle = nextInd.querySelector('div');
+                    nextCircle.className = 'w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold ring-4 ring-accent/20';
+                }
+
+                if(currentWizardStep === 4) {
+                    document.getElementById('wizard-next-btn').innerHTML = 'Start Monitoring <i class="ph-bold ph-check ml-1"></i>';
+                }
+            } else {
+                submitModal('wizard-add-stream', 'Event monitoring started', 'success');
+                resetWizard();
+            }
+        }
+
+        function resetWizard() {
+            currentWizardStep = 1;
+            document.querySelectorAll('.wizard-step').forEach(s => s.classList.add('hidden'));
+            if(document.getElementById('wizard-step-1')) document.getElementById('wizard-step-1').classList.remove('hidden');
+            document.getElementById('wizard-next-btn').innerHTML = 'Next Step <i class="ph-bold ph-arrow-right ml-1"></i>';
+            // Proper reset of indicators would go here in a real app
+        }
+
+        // --- UI Helpers ---
+        function toggleDrawer(id) { document.getElementById(id)?.classList.toggle('hidden'); }
+        function toggleDropdown(id) { document.getElementById(id)?.classList.toggle('hidden'); }
+        function openModal(id) { document.getElementById(id)?.classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id)?.classList.add('hidden'); }
+        function closeDropdowns() { document.getElementById('dropdown-user')?.classList.add('hidden'); }
+
+        window.onclick = function(event) {
+            if (!event.target.closest('.relative')) {
+                document.getElementById('dropdown-user')?.classList.add('hidden');
+            }
+        }
+
+        function submitModal(id, msg, kind) {
+            closeModal(id);
+            toast(msg || 'Saved', kind || 'success');
+        }
+
+        function toast(msg, kind) {
+            let host = document.getElementById('toast-host');
+            if (!host) {
+                host = document.createElement('div');
+                host.id = 'toast-host';
+                host.className = 'fixed bottom-6 right-6 z-[60] flex flex-col gap-2 items-end';
+                document.body.appendChild(host);
+            }
+            const colors = {
+                success: 'bg-successBg border-success/40 text-success ph-check-circle',
+                warning: 'bg-warningBg border-warning/40 text-warning ph-warning',
+                danger:  'bg-dangerBg border-danger/40 text-danger ph-warning-octagon',
+                info:    'bg-surface border-border text-white ph-info'
+            };
+            const c = colors[kind] || colors.info;
+            const icon = c.split(' ').pop();
+            const cssClass = c.replace(icon, '').trim();
+            const t = document.createElement('div');
+            t.className = `animate-slide-in ${cssClass} border rounded-lg px-4 py-3 text-[13px] font-medium shadow-modal flex items-center gap-2 max-w-sm`;
+            t.innerHTML = `<i class="ph-fill ${icon} text-lg"></i><span class="text-white">${msg}</span>`;
+            host.appendChild(t);
+            setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateX(8px)'; setTimeout(() => t.remove(), 320); }, 2600);
+        }
+
+        // --- Init ---
+        document.addEventListener('DOMContentLoaded', () => {
+            navTo('view-dashboard');
+            // Allow escape to close modals
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('[id^="modal-"], [id^="wizard-"]').forEach(m => {
+                        if (!m.classList.contains('hidden')) m.classList.add('hidden');
+                    });
+                    document.querySelectorAll('[id^="drawer-"]').forEach(d => d.classList.add('hidden'));
+                }
+            });
+        });
+    </script>
+</body>
+</html>
